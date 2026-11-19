@@ -1,0 +1,8 @@
+{
+  "name": "Bintaface ",
+  "description": "A social network and dating app combining a community moments feed, swipe-based match discovery, real-time messaging, and rich user profiles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

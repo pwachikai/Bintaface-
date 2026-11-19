@@ -1,0 +1,1932 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Shared Primitives ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    function isDesignatedAdminEmail() {
+      return isSignedIn() &&
+             ('email' in request.auth.token) &&
+             request.auth.token.email == 'gregoryfrancis652@gmail.com';
+    }
+
+    function isAdmin() {
+      return isDesignatedAdminEmail() ||
+             (isSignedIn() &&
+              exists(/databases/$(database)/documents/app_settings/platform) &&
+              get(/databases/$(database)/documents/app_settings/platform).data.adminUid == request.auth.uid &&
+              get(/databases/$(database)/documents/app_settings/platform).data.adminEmail == 'gregoryfrancis652@gmail.com');
+    }
+
+    // --- Validation Helpers ---
+    function isValidUserPrivate(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.showInDiscovery is bool &&
+             data.preferredIntent in ['all', 'dating', 'friends'] &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 120)) &&
+             (!('isPlusMember' in data) || data.isPlusMember is bool) &&
+             (!('plusPlanId' in data) || (data.plusPlanId is string && data.plusPlanId.size() <= 80)) &&
+             (!('superlikesBalance' in data) || (data.superlikesBalance is int && data.superlikesBalance >= 0 && data.superlikesBalance <= 999)) &&
+             (!('boostsBalance' in data) || (data.boostsBalance is int && data.boostsBalance >= 0 && data.boostsBalance <= 999)) &&
+             (!('sparksBalance' in data) || (data.sparksBalance is int && data.sparksBalance >= 0 && data.sparksBalance <= 999)) &&
+             (!('dailyLikesUsed' in data) || (data.dailyLikesUsed is int && data.dailyLikesUsed >= 0 && data.dailyLikesUsed <= 1000)) &&
+             (!('dailyLikesDate' in data) || (data.dailyLikesDate is string && data.dailyLikesDate.size() <= 20)) &&
+             (!('lastPurchaseToken' in data) || (data.lastPurchaseToken is string && data.lastPurchaseToken.size() <= 500)) &&
+             (!('payoutMethod' in data) || data.payoutMethod in ['usd_bank', 'ngn_bank', 'crypto', 'paypal', 'bank', 'upi']) &&
+             (!('payoutAccount' in data) || (data.payoutAccount is string && data.payoutAccount.size() <= 120)) &&
+             (!('payoutBankOrNetwork' in data) || (data.payoutBankOrNetwork is string && data.payoutBankOrNetwork.size() <= 80)) &&
+              (!('payoutCurrency' in data) || data.payoutCurrency in ['USD', 'NGN', 'CRYPTO']) &&
+              (!('autoPayoutEnabled' in data) || data.autoPayoutEnabled is bool) &&
+              (!('vipLevel' in data) || data.vipLevel in ['none', 'water', 'black_diamond', 'red_diamond', 'super_diamond', 'rock_diamond', 'star_diamond', 'silver_diamond', 'golden_diamond', 'moon_diamond', 'professional_general_diamond']) &&
+              (!('vipLevelRank' in data) || (data.vipLevelRank is int && data.vipLevelRank >= 0 && data.vipLevelRank <= 10)) &&
+              (!('lastLevelUpgradeId' in data) || isValidId(data.lastLevelUpgradeId)) &&
+              (!('hasRadioAccess' in data) || data.hasRadioAccess is bool) &&
+              (!('radioPassId' in data) || isValidId(data.radioPassId)) &&
+              isValidTimestamp(data.createdAt) &&
+              isValidTimestamp(data.updatedAt);
+     }
+
+     function isValidPublicProfile(data) {
+       return data.userId is string && isValidId(data.userId) &&
+              data.displayName is string && data.displayName.size() >= 2 && data.displayName.size() <= 40 &&
+              (!('handle' in data) || (data.handle is string && data.handle.size() <= 40)) &&
+              data.age is int && data.age >= 18 && data.age <= 100 &&
+              data.city is string && data.city.size() <= 60 &&
+              data.bio is string && data.bio.size() <= 300 &&
+              data.lookingFor in ['dating', 'friends', 'both'] &&
+              data.promptQuestion is string && data.promptQuestion.size() <= 120 &&
+              data.promptAnswer is string && data.promptAnswer.size() <= 240 &&
+              data.interests is list && data.interests.size() <= 8 &&
+              (data.interests.size() == 0 || (data.interests[0] is string && data.interests[0].size() <= 30)) &&
+              data.avatarKey is string && data.avatarKey.size() >= 1 && data.avatarKey.size() <= 40 &&
+              (!('photoBase64' in data) || (data.photoBase64 is string && data.photoBase64.size() <= 200000)) &&
+              (!('isPlusMember' in data) || data.isPlusMember is bool) &&
+              (!('isBoosted' in data) || data.isBoosted is bool) &&
+              (!('vipLevel' in data) || data.vipLevel in ['none', 'water', 'black_diamond', 'red_diamond', 'super_diamond', 'rock_diamond', 'star_diamond', 'silver_diamond', 'golden_diamond', 'moon_diamond', 'professional_general_diamond']) &&
+              (!('vipLevelRank' in data) || (data.vipLevelRank is int && data.vipLevelRank >= 0 && data.vipLevelRank <= 10)) &&
+              (!('lastLevelUpgradeId' in data) || isValidId(data.lastLevelUpgradeId)) &&
+              (!('hasRadioAccess' in data) || data.hasRadioAccess is bool) &&
+              (!('radioPassId' in data) || isValidId(data.radioPassId)) &&
+              data.isDiscoverable is bool &&
+              isValidTimestamp(data.createdAt) &&
+              isValidTimestamp(data.updatedAt);
+     }
+
+     function isValidLevelTierRank(levelId, rank) {
+       return (levelId == 'water' && rank == 1) ||
+              (levelId == 'black_diamond' && rank == 2) ||
+              (levelId == 'red_diamond' && rank == 3) ||
+              (levelId == 'super_diamond' && rank == 4) ||
+              (levelId == 'rock_diamond' && rank == 5) ||
+              (levelId == 'star_diamond' && rank == 6) ||
+              (levelId == 'silver_diamond' && rank == 7) ||
+              (levelId == 'golden_diamond' && rank == 8) ||
+              (levelId == 'moon_diamond' && rank == 9) ||
+              (levelId == 'professional_general_diamond' && rank == 10);
+     }
+
+     function isNextSequentialRank(currentRank, nextRank) {
+       return nextRank is int && nextRank >= 1 && nextRank <= 10 && nextRank == currentRank + 1;
+     }
+
+     function hasValidLevelUpgradeLink(data) {
+       return ('vipLevel' in data) &&
+              ('vipLevelRank' in data) &&
+              ('lastLevelUpgradeId' in data) &&
+              isValidLevelTierRank(data.vipLevel, data.vipLevelRank) &&
+              isValidId(data.lastLevelUpgradeId) &&
+              existsAfter(/databases/$(database)/documents/level_upgrades/$(data.lastLevelUpgradeId)) &&
+              existsAfter(/databases/$(database)/documents/revenue_ledger/$(data.lastLevelUpgradeId)) &&
+              getAfter(/databases/$(database)/documents/level_upgrades/$(data.lastLevelUpgradeId)).data.payerId == request.auth.uid &&
+              getAfter(/databases/$(database)/documents/level_upgrades/$(data.lastLevelUpgradeId)).data.levelId == data.vipLevel &&
+              getAfter(/databases/$(database)/documents/level_upgrades/$(data.lastLevelUpgradeId)).data.levelRank == data.vipLevelRank &&
+              getAfter(/databases/$(database)/documents/level_upgrades/$(data.lastLevelUpgradeId)).data.status == 'activated';
+     }
+
+     function isFreeOrUnsetVipLevel(data) {
+       return !('vipLevel' in data) ||
+              (data.vipLevel == 'none' &&
+               (!('vipLevelRank' in data) || data.vipLevelRank == 0) &&
+               !('lastLevelUpgradeId' in data));
+     }
+
+     function isValidLevelUpgrade(data) {
+       return data.payerId is string && isValidId(data.payerId) &&
+              data.payerName is string && data.payerName.size() >= 1 && data.payerName.size() <= 40 &&
+              isValidLevelTierRank(data.levelId, data.levelRank) &&
+              data.levelName is string && data.levelName.size() >= 3 && data.levelName.size() <= 40 &&
+              data.currency in ['NGN', 'USD'] &&
+              data.ngnAmount is int && data.ngnAmount >= 5000 && data.ngnAmount <= 10000000 &&
+              (data.currency != 'NGN' || data.ngnAmount == 5000) &&
+              data.amountCents is int && data.amountCents >= 100 && data.amountCents <= 100000 &&
+              data.adminShareCents is int && data.adminShareCents == data.amountCents &&
+              data.creatorShareCents == 0 &&
+              data.paymentMethod in ['ngn_bank', 'usd_bank', 'card_ngn', 'card_usd', 'google_play'] &&
+              data.paymentReference is string && data.paymentReference.size() >= 3 && data.paymentReference.size() <= 120 &&
+              data.adminEmail == 'gregoryfrancis652@gmail.com' &&
+              (!('adminBankLabel' in data) || (data.adminBankLabel is string && data.adminBankLabel.size() <= 120)) &&
+              data.status == 'activated' &&
+              isValidTimestamp(data.activatedAt) &&
+              isValidTimestamp(data.createdAt);
+     }
+
+     function isNoRadioPassSet(data) {
+       return (!('hasRadioAccess' in data) || data.hasRadioAccess == false) &&
+              !('radioPassId' in data);
+     }
+
+     function hasValidRadioPassLink(data) {
+       return ('hasRadioAccess' in data) && data.hasRadioAccess == true &&
+              ('radioPassId' in data) && isValidId(data.radioPassId) &&
+              existsAfter(/databases/$(database)/documents/radio_passes/$(data.radioPassId)) &&
+              existsAfter(/databases/$(database)/documents/revenue_ledger/$(data.radioPassId)) &&
+              getAfter(/databases/$(database)/documents/radio_passes/$(data.radioPassId)).data.payerId == request.auth.uid &&
+              getAfter(/databases/$(database)/documents/radio_passes/$(data.radioPassId)).data.status == 'active';
+     }
+
+     function hasActiveRadioAccess() {
+       return exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+              'hasRadioAccess' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.hasRadioAccess == true;
+     }
+
+     function isValidRadioPass(data) {
+       return data.payerId is string && isValidId(data.payerId) &&
+              data.payerName is string && data.payerName.size() >= 1 && data.payerName.size() <= 40 &&
+              data.currency in ['NGN', 'USD'] &&
+              data.ngnAmount is int && data.ngnAmount >= 2000 && data.ngnAmount <= 10000000 &&
+              (data.currency != 'NGN' || data.ngnAmount == 2000) &&
+              data.amountCents is int && data.amountCents >= 100 && data.amountCents <= 100000 &&
+              data.adminShareCents is int && data.adminShareCents == data.amountCents &&
+              data.creatorShareCents == 0 &&
+              data.paymentMethod in ['ngn_bank', 'usd_bank', 'card_ngn', 'card_usd', 'google_play'] &&
+              data.paymentReference is string && data.paymentReference.size() >= 3 && data.paymentReference.size() <= 120 &&
+              data.adminEmail == 'gregoryfrancis652@gmail.com' &&
+              (!('adminBankLabel' in data) || (data.adminBankLabel is string && data.adminBankLabel.size() <= 120)) &&
+              data.status == 'active' &&
+              isValidTimestamp(data.activatedAt) &&
+              isValidTimestamp(data.createdAt);
+     }
+
+     function isValidRadioChannel(data) {
+       return data.ownerId is string && isValidId(data.ownerId) &&
+              data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 40 &&
+              data.ownerAvatarKey is string && data.ownerAvatarKey.size() >= 1 && data.ownerAvatarKey.size() <= 40 &&
+              data.title is string && data.title.size() >= 2 && data.title.size() <= 80 &&
+              data.frequency is string && data.frequency.size() >= 2 && data.frequency.size() <= 24 &&
+              data.handle is string && data.handle.size() >= 2 && data.handle.size() <= 40 &&
+              data.category in ['Talk', 'Music', 'News', 'Knowledge', 'Faith', 'Comedy', 'Business', 'Global'] &&
+              data.description is string && data.description.size() <= 400 &&
+              (!('coverKey' in data) || (data.coverKey is string && data.coverKey.size() <= 40)) &&
+              data.visibility == 'public' &&
+              data.status in ['live', 'off_air'] &&
+              data.listenersCount is int && data.listenersCount >= 0 && data.listenersCount <= 2000000000 &&
+              data.subscribersCount is int && data.subscribersCount >= 0 &&
+              data.totalGiftsCents is int && data.totalGiftsCents >= 0 &&
+              (!('lastSparkGiftId' in data) || isValidId(data.lastSparkGiftId)) &&
+              isValidTimestamp(data.createdAt) &&
+              isValidTimestamp(data.updatedAt);
+     }
+
+     function isValidRadioBroadcast(data) {
+       return data.channelId is string && isValidId(data.channelId) &&
+              data.channelVisibility == 'public' &&
+              data.ownerId is string && isValidId(data.ownerId) &&
+              data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 40 &&
+              data.title is string && data.title.size() >= 2 && data.title.size() <= 120 &&
+              data.text is string && data.text.size() >= 1 && data.text.size() <= 1000 &&
+              (!('audioBase64' in data) || (data.audioBase64 is string && data.audioBase64.size() <= 140000)) &&
+              (!('audioDurationSec' in data) || (data.audioDurationSec is int && data.audioDurationSec >= 0 && data.audioDurationSec <= 180)) &&
+              isValidTimestamp(data.createdAt);
+     }
+
+    function isValidPost(data) {
+      return data.authorId is string && isValidId(data.authorId) &&
+             data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 40 &&
+             data.authorAvatarKey is string && data.authorAvatarKey.size() >= 1 && data.authorAvatarKey.size() <= 40 &&
+             (!('authorPhotoBase64' in data) || (data.authorPhotoBase64 is string && data.authorPhotoBase64.size() <= 200000)) &&
+             (!('authorIsPlus' in data) || data.authorIsPlus is bool) &&
+             (!('mediaType' in data) || data.mediaType in ['post', 'thread', 'reel', 'video']) &&
+             (!('title' in data) || (data.title is string && data.title.size() <= 120)) &&
+             (!('durationLabel' in data) || (data.durationLabel is string && data.durationLabel.size() <= 20)) &&
+             (!('audioTrack' in data) || (data.audioTrack is string && data.audioTrack.size() <= 80)) &&
+             (!('repostedFromAuthor' in data) || (data.repostedFromAuthor is string && data.repostedFromAuthor.size() <= 40)) &&
+             data.content is string && data.content.size() >= 1 && data.content.size() <= 1000 &&
+             data.tag in ['Moment', 'Date Idea', 'Question', 'Hangout', 'Thread', 'Reel', 'Video'] &&
+             (!('imageKey' in data) || (data.imageKey is string && data.imageKey.size() <= 40)) &&
+             (!('postPhotoBase64' in data) || (data.postPhotoBase64 is string && data.postPhotoBase64.size() <= 200000)) &&
+             data.visibility == 'community' &&
+             data.likesCount is int && data.likesCount >= 0 &&
+             data.commentsCount is int && data.commentsCount >= 0 &&
+             (!('repostsCount' in data) || (data.repostsCount is int && data.repostsCount >= 0)) &&
+             (!('viewsCount' in data) || (data.viewsCount is int && data.viewsCount >= 0)) &&
+             (!('sparksCount' in data) || (data.sparksCount is int && data.sparksCount >= 0)) &&
+             (!('sparksEarningsCents' in data) || (data.sparksEarningsCents is int && data.sparksEarningsCents >= 0)) &&
+             (!('lastCommentId' in data) || isValidId(data.lastCommentId)) &&
+             (!('lastSparkGiftId' in data) || isValidId(data.lastSparkGiftId)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidPostLike(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.postId is string && isValidId(data.postId) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidComment(data) {
+      return data.postId is string && isValidId(data.postId) &&
+             data.postVisibility == 'community' &&
+             data.authorId is string && isValidId(data.authorId) &&
+             data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 40 &&
+             data.authorAvatarKey is string && data.authorAvatarKey.size() >= 1 && data.authorAvatarKey.size() <= 40 &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 500 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidLiveRoom(data) {
+      return data.hostId is string && isValidId(data.hostId) &&
+             data.hostName is string && data.hostName.size() >= 1 && data.hostName.size() <= 40 &&
+             data.hostAvatarKey is string && data.hostAvatarKey.size() >= 1 && data.hostAvatarKey.size() <= 40 &&
+             (!('hostPhotoBase64' in data) || (data.hostPhotoBase64 is string && data.hostPhotoBase64.size() <= 200000)) &&
+             (!('hostIsPlus' in data) || data.hostIsPlus is bool) &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 120 &&
+             data.category in ['Music', 'Talk', 'Gaming', 'Q&A', 'Talent'] &&
+             (!('coverKey' in data) || (data.coverKey is string && data.coverKey.size() <= 40)) &&
+             data.visibility == 'public' &&
+             data.status in ['live', 'ended'] &&
+             data.viewerCount is int && data.viewerCount >= 0 && data.viewerCount <= 1000000 &&
+             data.likesCount is int && data.likesCount >= 0 &&
+             (!('sparksCount' in data) || (data.sparksCount is int && data.sparksCount >= 0)) &&
+             data.totalGiftsCents is int && data.totalGiftsCents >= 0 &&
+             (!('lastSparkGiftId' in data) || isValidId(data.lastSparkGiftId)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidLiveMessage(data) {
+      return data.roomId is string && isValidId(data.roomId) &&
+             data.roomVisibility == 'public' &&
+             data.senderId is string && isValidId(data.senderId) &&
+             data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 40 &&
+             data.senderAvatarKey is string && data.senderAvatarKey.size() >= 1 && data.senderAvatarKey.size() <= 40 &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 500 &&
+             (!('isGiftNotice' in data) || data.isGiftNotice is bool) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidChannel(data) {
+      return data.ownerId is string && isValidId(data.ownerId) &&
+             data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 40 &&
+             data.ownerAvatarKey is string && data.ownerAvatarKey.size() >= 1 && data.ownerAvatarKey.size() <= 40 &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 80 &&
+             data.handle is string && data.handle.size() >= 2 && data.handle.size() <= 40 &&
+             data.description is string && data.description.size() <= 300 &&
+             (!('category' in data) || (data.category is string && data.category.size() <= 40)) &&
+             data.visibility == 'public' &&
+             data.subscriberCount is int && data.subscriberCount >= 0 &&
+             data.totalGiftsCents is int && data.totalGiftsCents >= 0 &&
+             (!('lastSparkGiftId' in data) || isValidId(data.lastSparkGiftId)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidChannelBroadcast(data) {
+      return data.channelId is string && isValidId(data.channelId) &&
+             data.channelVisibility == 'public' &&
+             data.ownerId is string && isValidId(data.ownerId) &&
+             data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 40 &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 1000 &&
+             (!('imageKey' in data) || (data.imageKey is string && data.imageKey.size() <= 40)) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidPage(data) {
+      return data.ownerId is string && isValidId(data.ownerId) &&
+             data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 40 &&
+             data.ownerAvatarKey is string && data.ownerAvatarKey.size() >= 1 && data.ownerAvatarKey.size() <= 40 &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
+             data.handle is string && data.handle.size() >= 2 && data.handle.size() <= 40 &&
+             data.category in ['Creator', 'Business', 'Community', 'Entertainment', 'Education', 'Shopping', 'News', 'Artist'] &&
+             data.description is string && data.description.size() <= 400 &&
+             (!('websiteUrl' in data) || (data.websiteUrl is string && data.websiteUrl.size() <= 200)) &&
+             (!('coverKey' in data) || (data.coverKey is string && data.coverKey.size() <= 40)) &&
+             (!('photoBase64' in data) || (data.photoBase64 is string && data.photoBase64.size() <= 200000)) &&
+             data.visibility == 'public' &&
+             data.followersCount is int && data.followersCount >= 0 &&
+             data.postsCount is int && data.postsCount >= 0 &&
+             data.totalGiftsCents is int && data.totalGiftsCents >= 0 &&
+             (!('lastPostId' in data) || isValidId(data.lastPostId)) &&
+             (!('lastSparkGiftId' in data) || isValidId(data.lastSparkGiftId)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidPagePost(data) {
+      return data.pageId is string && isValidId(data.pageId) &&
+             data.pageName is string && data.pageName.size() >= 2 && data.pageName.size() <= 80 &&
+             data.pageVisibility == 'public' &&
+             data.ownerId is string && isValidId(data.ownerId) &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 1000 &&
+             (!('imageKey' in data) || (data.imageKey is string && data.imageKey.size() <= 40)) &&
+             (!('postPhotoBase64' in data) || (data.postPhotoBase64 is string && data.postPhotoBase64.size() <= 200000)) &&
+             data.likesCount is int && data.likesCount >= 0 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidConversation(data) {
+      return data.type in ['direct', 'group'] &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 80 &&
+             data.participantIds is list && data.participantIds.size() >= 2 && data.participantIds.size() <= 25 &&
+             data.participantNames is map &&
+             data.createdBy is string && isValidId(data.createdBy) &&
+             data.lastMessage is string && data.lastMessage.size() <= 500 &&
+             isValidTimestamp(data.lastMessageAt) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidSwipe(data) {
+      return data.fromUserId is string && isValidId(data.fromUserId) &&
+             data.toUserId is string && isValidId(data.toUserId) &&
+             data.fromUserId != data.toUserId &&
+             data.decision in ['like', 'superlike', 'pass'] &&
+             data.positiveTargetId is string && data.positiveTargetId.size() <= 128 &&
+             ((data.decision == 'pass' && data.positiveTargetId == '') ||
+              (data.decision in ['like', 'superlike'] && data.positiveTargetId == data.toUserId)) &&
+             data.fromName is string && data.fromName.size() >= 1 && data.fromName.size() <= 40 &&
+             data.fromAvatarKey is string && data.fromAvatarKey.size() >= 1 && data.fromAvatarKey.size() <= 40 &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidMatch(data) {
+      return data.participantIds is list && data.participantIds.size() == 2 &&
+             data.participantIds[0] is string && isValidId(data.participantIds[0]) &&
+             data.participantIds[1] is string && isValidId(data.participantIds[1]) &&
+             data.participantIds[0] != data.participantIds[1] &&
+             data.user1Id is string && data.user1Id == data.participantIds[0] &&
+             data.user1Name is string && data.user1Name.size() >= 1 && data.user1Name.size() <= 40 &&
+             data.user1AvatarKey is string && data.user1AvatarKey.size() >= 1 && data.user1AvatarKey.size() <= 40 &&
+             data.user2Id is string && data.user2Id == data.participantIds[1] &&
+             data.user2Name is string && data.user2Name.size() >= 1 && data.user2Name.size() <= 40 &&
+             data.user2AvatarKey is string && data.user2AvatarKey.size() >= 1 && data.user2AvatarKey.size() <= 40 &&
+             data.lastMessage is string && data.lastMessage.size() <= 500 &&
+             isValidTimestamp(data.lastMessageAt) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function hasPositiveMutualSwipe(data) {
+      return (data.user1Id == request.auth.uid &&
+              exists(/databases/$(database)/documents/swipes/$(data.user2Id + '_' + request.auth.uid)) &&
+              get(/databases/$(database)/documents/swipes/$(data.user2Id + '_' + request.auth.uid)).data.decision in ['like', 'superlike']) ||
+             (data.user2Id == request.auth.uid &&
+              exists(/databases/$(database)/documents/swipes/$(data.user1Id + '_' + request.auth.uid)) &&
+              get(/databases/$(database)/documents/swipes/$(data.user1Id + '_' + request.auth.uid)).data.decision in ['like', 'superlike']);
+    }
+
+    function isValidMessage(data) {
+      return data.senderId is string && isValidId(data.senderId) &&
+             data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 40 &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 1000 &&
+             data.participantIds is list && data.participantIds.size() >= 2 && data.participantIds.size() <= 25 &&
+             (!('messageType' in data) || data.messageType in ['text', 'voice_note', 'call_log']) &&
+             (!('voiceNoteBase64' in data) || (data.voiceNoteBase64 is string && data.voiceNoteBase64.size() <= 140000)) &&
+             (!('voiceNoteDurationSec' in data) || (data.voiceNoteDurationSec is int && data.voiceNoteDurationSec >= 0 && data.voiceNoteDurationSec <= 180)) &&
+             (!('callType' in data) || data.callType in ['voice', 'video']) &&
+             (!('callDurationSec' in data) || (data.callDurationSec is int && data.callDurationSec >= 0 && data.callDurationSec <= 86400)) &&
+             (!('callStatus' in data) || data.callStatus in ['completed', 'missed', 'declined']) &&
+             isValidTimestamp(data.createdAt);
+    }
+
+    function isValidCallSession(data) {
+      return data.callerId is string && isValidId(data.callerId) &&
+             data.callerName is string && data.callerName.size() >= 1 && data.callerName.size() <= 40 &&
+             data.callerAvatarKey is string && data.callerAvatarKey.size() >= 1 && data.callerAvatarKey.size() <= 40 &&
+             data.calleeIds is list && data.calleeIds.size() >= 1 && data.calleeIds.size() <= 24 &&
+             data.participantIds is list && data.participantIds.size() >= 2 && data.participantIds.size() <= 25 &&
+             data.callerId in data.participantIds &&
+             data.participantNames is map &&
+             data.threadId is string && isValidId(data.threadId) &&
+             data.threadType in ['conversation', 'match'] &&
+             data.callType in ['voice', 'video'] &&
+             data.status in ['ringing', 'active', 'ended', 'declined'] &&
+             (!('durationSec' in data) || (data.durationSec is int && data.durationSec >= 0 && data.durationSec <= 86400)) &&
+             (!('callerMuted' in data) || data.callerMuted is bool) &&
+             (!('callerVideoOn' in data) || data.callerVideoOn is bool) &&
+             (!('endedAt' in data) || isValidTimestamp(data.endedAt)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidShop(data) {
+      return data.ownerId is string && isValidId(data.ownerId) &&
+             data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 40 &&
+             data.ownerAvatarKey is string && data.ownerAvatarKey.size() >= 1 && data.ownerAvatarKey.size() <= 40 &&
+             data.name is string && data.name.size() >= 2 && data.name.size() <= 80 &&
+             data.handle is string && data.handle.size() >= 2 && data.handle.size() <= 40 &&
+             data.category in ['Fashion', 'Electronics', 'Beauty', 'Digital', 'Food', 'Services', 'General'] &&
+             data.description is string && data.description.size() <= 400 &&
+             data.currency in ['NGN', 'USD'] &&
+             (!('city' in data) || (data.city is string && data.city.size() <= 60)) &&
+             (!('coverKey' in data) || (data.coverKey is string && data.coverKey.size() <= 40)) &&
+             (!('photoBase64' in data) || (data.photoBase64 is string && data.photoBase64.size() <= 200000)) &&
+             data.visibility == 'public' &&
+             data.productsCount is int && data.productsCount >= 0 &&
+             data.ordersCount is int && data.ordersCount >= 0 &&
+             data.totalSalesCents is int && data.totalSalesCents >= 0 &&
+             (!('lastProductId' in data) || isValidId(data.lastProductId)) &&
+             (!('lastOrderId' in data) || isValidId(data.lastOrderId)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidShopProduct(data) {
+      return data.shopId is string && isValidId(data.shopId) &&
+             data.shopName is string && data.shopName.size() >= 2 && data.shopName.size() <= 80 &&
+             data.shopVisibility == 'public' &&
+             data.ownerId is string && isValidId(data.ownerId) &&
+             data.title is string && data.title.size() >= 2 && data.title.size() <= 100 &&
+             data.description is string && data.description.size() <= 500 &&
+             data.category is string && data.category.size() >= 2 && data.category.size() <= 40 &&
+             data.priceUsdCents is int && data.priceUsdCents >= 50 && data.priceUsdCents <= 100000 &&
+             data.priceNgn is int && data.priceNgn >= 100 && data.priceNgn <= 10000000 &&
+             data.stockCount is int && data.stockCount >= 0 && data.stockCount <= 100000 &&
+             data.isAvailable is bool &&
+             (!('imageKey' in data) || (data.imageKey is string && data.imageKey.size() <= 40)) &&
+             (!('photoBase64' in data) || (data.photoBase64 is string && data.photoBase64.size() <= 200000)) &&
+             (!('lastOrderId' in data) || isValidId(data.lastOrderId)) &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidShop8020Split(totalCents, adminFeeCents, sellerShareCents) {
+      return totalCents is int && totalCents >= 50 && totalCents <= 100000 &&
+             adminFeeCents is int && adminFeeCents >= 0 &&
+             sellerShareCents is int && sellerShareCents >= 0 &&
+             adminFeeCents + sellerShareCents == totalCents &&
+             adminFeeCents * 100 <= totalCents * 20 &&
+             (adminFeeCents + 1) * 100 > totalCents * 20;
+    }
+
+    function isValidShopOrder(data) {
+      return data.shopId is string && isValidId(data.shopId) &&
+             data.shopName is string && data.shopName.size() >= 2 && data.shopName.size() <= 80 &&
+             data.productId is string && isValidId(data.productId) &&
+             data.productTitle is string && data.productTitle.size() >= 2 && data.productTitle.size() <= 100 &&
+             data.buyerId is string && isValidId(data.buyerId) &&
+             data.buyerName is string && data.buyerName.size() >= 1 && data.buyerName.size() <= 40 &&
+             data.sellerId is string && isValidId(data.sellerId) &&
+             data.buyerId != data.sellerId &&
+             data.sellerName is string && data.sellerName.size() >= 1 && data.sellerName.size() <= 40 &&
+             data.quantity is int && data.quantity >= 1 && data.quantity <= 20 &&
+             data.currency in ['NGN', 'USD'] &&
+             data.unitPriceCents is int && data.unitPriceCents >= 50 && data.unitPriceCents <= 100000 &&
+             data.totalCents is int && data.totalCents == data.unitPriceCents * data.quantity &&
+             data.ngnAmount is int && data.ngnAmount >= 100 && data.ngnAmount <= 20000000 &&
+             isValidShop8020Split(data.totalCents, data.adminFeeCents, data.sellerShareCents) &&
+             (!('deliveryNote' in data) || (data.deliveryNote is string && data.deliveryNote.size() <= 240)) &&
+             data.status in ['placed', 'fulfilled', 'cancelled'] &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    // --- Collection Rules ---
+
+    // 1. Private User Settings & PII
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'showInDiscovery', 'preferredIntent', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'email', 'showInDiscovery', 'preferredIntent',
+                         'isPlusMember', 'plusPlanId', 'superlikesBalance', 'boostsBalance',
+                         'sparksBalance', 'dailyLikesUsed', 'dailyLikesDate', 'lastPurchaseToken',
+                         'payoutMethod', 'payoutAccount', 'payoutBankOrNetwork',
+                         'payoutCurrency', 'autoPayoutEnabled',
+                         'vipLevel', 'vipLevelRank', 'lastLevelUpgradeId',
+                         'hasRadioAccess', 'radioPassId',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidUserPrivate(incoming()) &&
+                       (isFreeOrUnsetVipLevel(incoming()) || (incoming().vipLevelRank == 1 && hasValidLevelUpgradeLink(incoming()))) &&
+                       (isNoRadioPassSet(incoming()) || hasValidRadioPassLink(incoming()));
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidUserPrivate(incoming()) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt && (
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'email', 'showInDiscovery', 'preferredIntent',
+                           'isPlusMember', 'plusPlanId', 'superlikesBalance', 'boostsBalance',
+                           'sparksBalance', 'dailyLikesUsed', 'dailyLikesDate', 'lastPurchaseToken',
+                           'payoutMethod', 'payoutAccount', 'payoutBankOrNetwork',
+                           'payoutCurrency', 'autoPayoutEnabled', 'updatedAt'
+                         ]) ||
+                         (incoming().diff(existing()).affectedKeys().hasOnly([
+                            'vipLevel', 'vipLevelRank', 'lastLevelUpgradeId', 'updatedAt'
+                          ]) &&
+                          isNextSequentialRank(('vipLevelRank' in existing()) ? existing().vipLevelRank : 0, incoming().vipLevelRank) &&
+                          hasValidLevelUpgradeLink(incoming())) ||
+                         (incoming().diff(existing()).affectedKeys().hasOnly([
+                            'hasRadioAccess', 'radioPassId', 'updatedAt'
+                          ]) &&
+                          hasValidRadioPassLink(incoming()))
+                       );
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // 2. Public Profiles (No PII)
+    match /public_profiles/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) &&
+                    (request.auth.uid == userId || (resource != null && existing().isDiscoverable == true));
+      allow list: if isSignedIn() && existing().isDiscoverable == true;
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'userId', 'displayName', 'age', 'city', 'bio', 'lookingFor',
+                         'promptQuestion', 'promptAnswer', 'interests', 'avatarKey',
+                         'isDiscoverable', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'displayName', 'handle', 'age', 'city', 'bio', 'lookingFor',
+                         'promptQuestion', 'promptAnswer', 'interests', 'avatarKey',
+                         'photoBase64', 'isPlusMember', 'isBoosted',
+                         'vipLevel', 'vipLevelRank', 'lastLevelUpgradeId',
+                         'hasRadioAccess', 'radioPassId',
+                         'isDiscoverable', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidPublicProfile(incoming()) &&
+                       (isFreeOrUnsetVipLevel(incoming()) || hasValidLevelUpgradeLink(incoming())) &&
+                       (isNoRadioPassSet(incoming()) || hasValidRadioPassLink(incoming()));
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidPublicProfile(incoming()) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt && (
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'displayName', 'handle', 'age', 'city', 'bio', 'lookingFor',
+                           'promptQuestion', 'promptAnswer', 'interests', 'avatarKey',
+                           'photoBase64', 'isPlusMember', 'isBoosted',
+                           'isDiscoverable', 'updatedAt'
+                         ]) ||
+                         (incoming().diff(existing()).affectedKeys().hasOnly([
+                            'vipLevel', 'vipLevelRank', 'lastLevelUpgradeId', 'updatedAt'
+                          ]) &&
+                          isNextSequentialRank(('vipLevelRank' in existing()) ? existing().vipLevelRank : 0, incoming().vipLevelRank) &&
+                          hasValidLevelUpgradeLink(incoming())) ||
+                         (incoming().diff(existing()).affectedKeys().hasOnly([
+                            'hasRadioAccess', 'radioPassId', 'updatedAt'
+                          ]) &&
+                          hasValidRadioPassLink(incoming()))
+                       );
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // 3. Community Feed Posts, Threads, Reels & Videos
+    match /posts/{postId} {
+      allow get: if isSignedIn() && isValidId(postId) &&
+                    (existing().visibility == 'community' || existing().authorId == request.auth.uid);
+      allow list: if isSignedIn() &&
+                     (existing().visibility == 'community' || existing().authorId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(postId) &&
+                       incoming().authorId == request.auth.uid &&
+                       incoming().likesCount == 0 &&
+                       incoming().commentsCount == 0 &&
+                       incoming().keys().hasAll([
+                         'authorId', 'authorName', 'authorAvatarKey', 'content',
+                         'tag', 'visibility', 'likesCount', 'commentsCount',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'authorId', 'authorName', 'authorAvatarKey', 'authorPhotoBase64',
+                         'authorIsPlus', 'mediaType', 'title', 'durationLabel', 'audioTrack',
+                         'repostedFromAuthor', 'content', 'tag', 'imageKey', 'postPhotoBase64',
+                         'visibility', 'likesCount', 'commentsCount', 'repostsCount',
+                         'viewsCount', 'sparksCount', 'sparksEarningsCents', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidPost(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(postId) &&
+                       isValidPost(incoming()) &&
+                       incoming().authorId == existing().authorId &&
+                       incoming().createdAt == existing().createdAt && (
+                         // Action 1: Author edits post content/media
+                         (existing().authorId == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly([
+                            'content', 'tag', 'title', 'durationLabel', 'audioTrack',
+                            'imageKey', 'postPhotoBase64', 'authorName', 'authorAvatarKey',
+                            'authorPhotoBase64', 'updatedAt'
+                          ])) ||
+                         // Action 2: Like post atomically with post_likes/{postId}_{uid}
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'updatedAt']) &&
+                          incoming().likesCount == existing().likesCount + 1 &&
+                          !exists(/databases/$(database)/documents/post_likes/$(postId + '_' + request.auth.uid)) &&
+                          existsAfter(/databases/$(database)/documents/post_likes/$(postId + '_' + request.auth.uid))) ||
+                         // Action 3: Unlike post atomically with post_likes/{postId}_{uid}
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'updatedAt']) &&
+                          incoming().likesCount == existing().likesCount - 1 &&
+                          existing().likesCount > 0 &&
+                          exists(/databases/$(database)/documents/post_likes/$(postId + '_' + request.auth.uid)) &&
+                          !existsAfter(/databases/$(database)/documents/post_likes/$(postId + '_' + request.auth.uid))) ||
+                         // Action 4: Increment commentsCount atomically with comment creation
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['commentsCount', 'lastCommentId', 'updatedAt']) &&
+                          incoming().commentsCount == existing().commentsCount + 1 &&
+                          isValidId(incoming().lastCommentId) &&
+                          existsAfter(/databases/$(database)/documents/posts/$(postId)/comments/$(incoming().lastCommentId))) ||
+                         // Action 5: Increment sparksCount & sparksEarningsCents atomically with spark_gifts/{giftId}
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['sparksCount', 'sparksEarningsCents', 'lastSparkGiftId', 'updatedAt']) &&
+                          (('sparksCount' in existing()) ? incoming().sparksCount == existing().sparksCount + 1 : incoming().sparksCount == 1) &&
+                          (('sparksEarningsCents' in existing()) ? incoming().sparksEarningsCents == existing().sparksEarningsCents + 80 : incoming().sparksEarningsCents == 80) &&
+                          isValidId(incoming().lastSparkGiftId) &&
+                          existsAfter(/databases/$(database)/documents/spark_gifts/$(incoming().lastSparkGiftId))) ||
+                         // Action 6: Repost atomically with post_reposts/{postId}_{uid}
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['repostsCount', 'updatedAt']) &&
+                          (('repostsCount' in existing()) ? incoming().repostsCount == existing().repostsCount + 1 : incoming().repostsCount == 1) &&
+                          !exists(/databases/$(database)/documents/post_reposts/$(postId + '_' + request.auth.uid)) &&
+                          existsAfter(/databases/$(database)/documents/post_reposts/$(postId + '_' + request.auth.uid))) ||
+                         // Action 7: Increment viewsCount (+1) on Reel/Video watch
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['viewsCount', 'updatedAt']) &&
+                          (('viewsCount' in existing()) ? incoming().viewsCount == existing().viewsCount + 1 : incoming().viewsCount == 1))
+                       );
+      allow delete: if isSignedIn() && isValidId(postId) && existing().authorId == request.auth.uid;
+
+      // 3b. Post Comments
+      match /comments/{commentId} {
+        allow get: if isSignedIn() && isValidId(postId) && isValidId(commentId) &&
+                      (existing().postVisibility == 'community' || existing().authorId == request.auth.uid);
+        allow list: if isSignedIn() && existing().postVisibility == 'community';
+        allow create: if isSignedIn() &&
+                         isValidId(postId) &&
+                         isValidId(commentId) &&
+                         incoming().authorId == request.auth.uid &&
+                         incoming().postId == postId &&
+                         incoming().keys().hasAll([
+                           'postId', 'postVisibility', 'authorId', 'authorName',
+                           'authorAvatarKey', 'text', 'createdAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'postId', 'postVisibility', 'authorId', 'authorName',
+                           'authorAvatarKey', 'text', 'createdAt'
+                         ]) &&
+                         isValidComment(incoming()) &&
+                         exists(/databases/$(database)/documents/posts/$(postId));
+        allow update: if false;
+        allow delete: if isSignedIn() && isValidId(postId) && isValidId(commentId) && existing().authorId == request.auth.uid;
+      }
+    }
+
+    // 4. Post Likes ({postId}_{userId})
+    match /post_likes/{likeId} {
+      allow get: if isSignedIn() && isValidId(likeId) &&
+                    (resource == null
+                      ? likeId.matches('^.*_' + request.auth.uid + '$')
+                      : existing().userId == request.auth.uid);
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() &&
+                       isValidId(likeId) &&
+                       likeId == incoming().postId + '_' + request.auth.uid &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'postId', 'createdAt']) &&
+                       incoming().keys().hasOnly(['userId', 'postId', 'createdAt']) &&
+                       isValidPostLike(incoming()) &&
+                       exists(/databases/$(database)/documents/posts/$(incoming().postId));
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(likeId) && existing().userId == request.auth.uid;
+    }
+
+    // 4b. Post Reposts ({postId}_{userId})
+    match /post_reposts/{repostId} {
+      allow get: if isSignedIn() && isValidId(repostId) &&
+                    (resource == null
+                      ? repostId.matches('^.*_' + request.auth.uid + '$')
+                      : existing().userId == request.auth.uid);
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() &&
+                       isValidId(repostId) &&
+                       repostId == incoming().postId + '_' + request.auth.uid &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'postId', 'createdAt']) &&
+                       incoming().keys().hasOnly(['userId', 'postId', 'createdAt']) &&
+                       isValidPostLike(incoming()) &&
+                       exists(/databases/$(database)/documents/posts/$(incoming().postId));
+      allow update, delete: if false;
+    }
+
+    // 4c. Creator Follows ({followerId}_{followedId})
+    match /follows/{followId} {
+      allow get: if isSignedIn() && isValidId(followId) &&
+                    (resource == null
+                      ? followId.matches('^' + request.auth.uid + '_.*$')
+                      : (existing().followerId == request.auth.uid || existing().followedId == request.auth.uid));
+      allow list: if isSignedIn() &&
+                     (existing().followerId == request.auth.uid || existing().followedId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(followId) &&
+                       followId == request.auth.uid + '_' + incoming().followedId &&
+                       incoming().followerId == request.auth.uid &&
+                       isValidId(incoming().followedId) &&
+                       incoming().followerId != incoming().followedId &&
+                       incoming().followerName is string && incoming().followerName.size() >= 1 && incoming().followerName.size() <= 40 &&
+                       incoming().keys().hasAll(['followerId', 'followedId', 'followerName', 'createdAt']) &&
+                       incoming().keys().hasOnly(['followerId', 'followedId', 'followerName', 'createdAt']) &&
+                       isValidTimestamp(incoming().createdAt);
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(followId) && existing().followerId == request.auth.uid;
+    }
+
+    // 5. BIGO Live-Style Streaming Rooms
+    match /live_rooms/{roomId} {
+      allow get: if isSignedIn() && isValidId(roomId) &&
+                    (existing().visibility == 'public' || existing().hostId == request.auth.uid);
+      allow list: if isSignedIn() &&
+                     (existing().visibility == 'public' || existing().hostId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(roomId) &&
+                       incoming().hostId == request.auth.uid &&
+                       incoming().visibility == 'public' &&
+                       incoming().status == 'live' &&
+                       incoming().likesCount == 0 &&
+                       incoming().totalGiftsCents == 0 &&
+                       incoming().keys().hasAll([
+                         'hostId', 'hostName', 'hostAvatarKey', 'title', 'category',
+                         'visibility', 'status', 'viewerCount', 'likesCount',
+                         'totalGiftsCents', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'hostId', 'hostName', 'hostAvatarKey', 'hostPhotoBase64', 'hostIsPlus',
+                         'title', 'category', 'coverKey', 'visibility', 'status',
+                         'viewerCount', 'likesCount', 'sparksCount', 'totalGiftsCents',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidLiveRoom(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(roomId) &&
+                       isValidLiveRoom(incoming()) &&
+                       incoming().hostId == existing().hostId &&
+                       incoming().visibility == existing().visibility &&
+                       incoming().createdAt == existing().createdAt && (
+                         // Host updates room status/title
+                         (existing().hostId == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'category', 'status', 'updatedAt'])) ||
+                         // Viewer sends live heart
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'updatedAt']) &&
+                          incoming().likesCount == existing().likesCount + 1) ||
+                         // Viewer joins/leaves room (+/- 1)
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['viewerCount', 'updatedAt']) &&
+                          (incoming().viewerCount == existing().viewerCount + 1 ||
+                           (existing().viewerCount > 0 && incoming().viewerCount == existing().viewerCount - 1))) ||
+                         // Viewer sends atomic Spark Gift to host
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['sparksCount', 'totalGiftsCents', 'lastSparkGiftId', 'updatedAt']) &&
+                          (('sparksCount' in existing()) ? incoming().sparksCount == existing().sparksCount + 1 : incoming().sparksCount == 1) &&
+                          incoming().totalGiftsCents == existing().totalGiftsCents + 80 &&
+                          isValidId(incoming().lastSparkGiftId) &&
+                          existsAfter(/databases/$(database)/documents/spark_gifts/$(incoming().lastSparkGiftId)))
+                       );
+      allow delete: if isSignedIn() && isValidId(roomId) && existing().hostId == request.auth.uid;
+
+      match /messages/{messageId} {
+        allow get: if isSignedIn() && isValidId(roomId) && isValidId(messageId) &&
+                      existing().roomVisibility == 'public';
+        allow list: if isSignedIn() && existing().roomVisibility == 'public';
+        allow create: if isSignedIn() &&
+                         isValidId(roomId) &&
+                         isValidId(messageId) &&
+                         incoming().senderId == request.auth.uid &&
+                         incoming().roomId == roomId &&
+                         incoming().keys().hasAll([
+                           'roomId', 'roomVisibility', 'senderId', 'senderName',
+                           'senderAvatarKey', 'text', 'createdAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'roomId', 'roomVisibility', 'senderId', 'senderName',
+                           'senderAvatarKey', 'text', 'isGiftNotice', 'createdAt'
+                         ]) &&
+                         isValidLiveMessage(incoming()) &&
+                         exists(/databases/$(database)/documents/live_rooms/$(roomId));
+        allow update, delete: if false;
+      }
+    }
+
+    // 6. Telegram-Style Broadcast Channels
+    match /channels/{channelId} {
+      allow get: if isSignedIn() && isValidId(channelId) &&
+                    (existing().visibility == 'public' || existing().ownerId == request.auth.uid);
+      allow list: if isSignedIn() &&
+                     (existing().visibility == 'public' || existing().ownerId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(channelId) &&
+                       incoming().ownerId == request.auth.uid &&
+                       incoming().visibility == 'public' &&
+                       incoming().totalGiftsCents == 0 &&
+                       incoming().keys().hasAll([
+                         'ownerId', 'ownerName', 'ownerAvatarKey', 'title', 'handle',
+                         'description', 'visibility', 'subscriberCount', 'totalGiftsCents',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'ownerId', 'ownerName', 'ownerAvatarKey', 'title', 'handle',
+                         'description', 'category', 'visibility', 'subscriberCount',
+                         'totalGiftsCents', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidChannel(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(channelId) &&
+                       isValidChannel(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().visibility == existing().visibility &&
+                       incoming().createdAt == existing().createdAt && (
+                         // Owner updates channel info
+                         (existing().ownerId == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'category', 'updatedAt'])) ||
+                         // Atomic subscribe with channel_subscriptions/{channelId}_{uid}
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['subscriberCount', 'updatedAt']) &&
+                          incoming().subscriberCount == existing().subscriberCount + 1 &&
+                          !exists(/databases/$(database)/documents/channel_subscriptions/$(channelId + '_' + request.auth.uid)) &&
+                          existsAfter(/databases/$(database)/documents/channel_subscriptions/$(channelId + '_' + request.auth.uid))) ||
+                         // Atomic unsubscribe
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['subscriberCount', 'updatedAt']) &&
+                          existing().subscriberCount > 0 &&
+                          incoming().subscriberCount == existing().subscriberCount - 1 &&
+                          exists(/databases/$(database)/documents/channel_subscriptions/$(channelId + '_' + request.auth.uid)) &&
+                          !existsAfter(/databases/$(database)/documents/channel_subscriptions/$(channelId + '_' + request.auth.uid))) ||
+                         // Atomic Spark Gift to channel creator
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['totalGiftsCents', 'lastSparkGiftId', 'updatedAt']) &&
+                          incoming().totalGiftsCents == existing().totalGiftsCents + 80 &&
+                          isValidId(incoming().lastSparkGiftId) &&
+                          existsAfter(/databases/$(database)/documents/spark_gifts/$(incoming().lastSparkGiftId)))
+                       );
+      allow delete: if isSignedIn() && isValidId(channelId) && existing().ownerId == request.auth.uid;
+
+      match /broadcasts/{broadcastId} {
+        allow get: if isSignedIn() && isValidId(channelId) && isValidId(broadcastId) &&
+                      existing().channelVisibility == 'public';
+        allow list: if isSignedIn() && existing().channelVisibility == 'public';
+        allow create: if isSignedIn() &&
+                         isValidId(channelId) &&
+                         isValidId(broadcastId) &&
+                         incoming().ownerId == request.auth.uid &&
+                         incoming().channelId == channelId &&
+                         incoming().keys().hasAll([
+                           'channelId', 'channelVisibility', 'ownerId', 'ownerName', 'text', 'createdAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'channelId', 'channelVisibility', 'ownerId', 'ownerName', 'text', 'imageKey', 'createdAt'
+                         ]) &&
+                         isValidChannelBroadcast(incoming()) &&
+                         exists(/databases/$(database)/documents/channels/$(channelId)) &&
+                         get(/databases/$(database)/documents/channels/$(channelId)).data.ownerId == request.auth.uid;
+        allow update: if false;
+        allow delete: if isSignedIn() && isValidId(channelId) && isValidId(broadcastId) && existing().ownerId == request.auth.uid;
+      }
+    }
+
+    match /channel_subscriptions/{subId} {
+      allow get: if isSignedIn() && isValidId(subId) &&
+                    (resource == null
+                      ? subId.matches('^.*_' + request.auth.uid + '$')
+                      : existing().userId == request.auth.uid);
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() &&
+                       isValidId(subId) &&
+                       subId == incoming().channelId + '_' + request.auth.uid &&
+                       incoming().userId == request.auth.uid &&
+                       isValidId(incoming().channelId) &&
+                       incoming().keys().hasAll(['channelId', 'userId', 'createdAt']) &&
+                       incoming().keys().hasOnly(['channelId', 'userId', 'createdAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       exists(/databases/$(database)/documents/channels/$(incoming().channelId));
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(subId) && existing().userId == request.auth.uid;
+    }
+
+    // 6b. Facebook-Style User Pages, Page Posts, Page Follows & Page Post Likes
+    match /pages/{pageId} {
+      allow get: if isSignedIn() && isValidId(pageId) &&
+                    (existing().visibility == 'public' || existing().ownerId == request.auth.uid);
+      allow list: if isSignedIn() &&
+                     (existing().visibility == 'public' || existing().ownerId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(pageId) &&
+                       incoming().ownerId == request.auth.uid &&
+                       incoming().visibility == 'public' &&
+                       incoming().followersCount == 1 &&
+                       incoming().postsCount == 0 &&
+                       incoming().totalGiftsCents == 0 &&
+                       incoming().keys().hasAll([
+                         'ownerId', 'ownerName', 'ownerAvatarKey', 'name', 'handle',
+                         'category', 'description', 'visibility', 'followersCount',
+                         'postsCount', 'totalGiftsCents', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'ownerId', 'ownerName', 'ownerAvatarKey', 'name', 'handle',
+                         'category', 'description', 'websiteUrl', 'coverKey', 'photoBase64',
+                         'visibility', 'followersCount', 'postsCount', 'totalGiftsCents',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidPage(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(pageId) &&
+                       isValidPage(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().visibility == existing().visibility &&
+                       incoming().createdAt == existing().createdAt && (
+                         // Owner edits page details
+                         (existing().ownerId == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly([
+                            'name', 'category', 'description', 'websiteUrl', 'coverKey', 'photoBase64', 'updatedAt'
+                          ])) ||
+                         // Atomic follow with page_follows/{pageId}_{uid}
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['followersCount', 'updatedAt']) &&
+                          incoming().followersCount == existing().followersCount + 1 &&
+                          !exists(/databases/$(database)/documents/page_follows/$(pageId + '_' + request.auth.uid)) &&
+                          existsAfter(/databases/$(database)/documents/page_follows/$(pageId + '_' + request.auth.uid))) ||
+                         // Atomic unfollow
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['followersCount', 'updatedAt']) &&
+                          existing().followersCount > 0 &&
+                          incoming().followersCount == existing().followersCount - 1 &&
+                          exists(/databases/$(database)/documents/page_follows/$(pageId + '_' + request.auth.uid)) &&
+                          !existsAfter(/databases/$(database)/documents/page_follows/$(pageId + '_' + request.auth.uid))) ||
+                         // Owner publishes a page post atomically
+                         (existing().ownerId == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['postsCount', 'lastPostId', 'updatedAt']) &&
+                          incoming().postsCount == existing().postsCount + 1 &&
+                          isValidId(incoming().lastPostId) &&
+                          existsAfter(/databases/$(database)/documents/pages/$(pageId)/posts/$(incoming().lastPostId))) ||
+                         // Atomic Spark Gift to page owner
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['totalGiftsCents', 'lastSparkGiftId', 'updatedAt']) &&
+                          incoming().totalGiftsCents == existing().totalGiftsCents + 80 &&
+                          isValidId(incoming().lastSparkGiftId) &&
+                          existsAfter(/databases/$(database)/documents/spark_gifts/$(incoming().lastSparkGiftId)))
+                       );
+      allow delete: if isSignedIn() && isValidId(pageId) && existing().ownerId == request.auth.uid;
+
+      match /posts/{postId} {
+        allow get: if isSignedIn() && isValidId(pageId) && isValidId(postId) &&
+                      existing().pageVisibility == 'public';
+        allow list: if isSignedIn() && existing().pageVisibility == 'public';
+        allow create: if isSignedIn() &&
+                         isValidId(pageId) &&
+                         isValidId(postId) &&
+                         incoming().ownerId == request.auth.uid &&
+                         incoming().pageId == pageId &&
+                         incoming().likesCount == 0 &&
+                         incoming().keys().hasAll([
+                           'pageId', 'pageName', 'pageVisibility', 'ownerId', 'text', 'likesCount', 'createdAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'pageId', 'pageName', 'pageVisibility', 'ownerId', 'text',
+                           'imageKey', 'postPhotoBase64', 'likesCount', 'createdAt'
+                         ]) &&
+                         isValidPagePost(incoming()) &&
+                         exists(/databases/$(database)/documents/pages/$(pageId)) &&
+                         get(/databases/$(database)/documents/pages/$(pageId)).data.ownerId == request.auth.uid;
+        allow update: if isSignedIn() &&
+                         isValidId(pageId) &&
+                         isValidId(postId) &&
+                         isValidPagePost(incoming()) &&
+                         incoming().ownerId == existing().ownerId &&
+                         incoming().pageId == existing().pageId &&
+                         incoming().pageVisibility == existing().pageVisibility &&
+                         incoming().createdAt == existing().createdAt && (
+                           (incoming().diff(existing()).affectedKeys().hasOnly(['likesCount']) &&
+                            incoming().likesCount == existing().likesCount + 1 &&
+                            !exists(/databases/$(database)/documents/page_post_likes/$(postId + '_' + request.auth.uid)) &&
+                            existsAfter(/databases/$(database)/documents/page_post_likes/$(postId + '_' + request.auth.uid))) ||
+                           (incoming().diff(existing()).affectedKeys().hasOnly(['likesCount']) &&
+                            existing().likesCount > 0 &&
+                            incoming().likesCount == existing().likesCount - 1 &&
+                            exists(/databases/$(database)/documents/page_post_likes/$(postId + '_' + request.auth.uid)) &&
+                            !existsAfter(/databases/$(database)/documents/page_post_likes/$(postId + '_' + request.auth.uid)))
+                         );
+        allow delete: if isSignedIn() && isValidId(pageId) && isValidId(postId) && existing().ownerId == request.auth.uid;
+      }
+    }
+
+    match /page_follows/{followId} {
+      allow get: if isSignedIn() && isValidId(followId) &&
+                    (resource == null
+                      ? followId.matches('^.*_' + request.auth.uid + '$')
+                      : existing().userId == request.auth.uid);
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() &&
+                       isValidId(followId) &&
+                       followId == incoming().pageId + '_' + request.auth.uid &&
+                       incoming().userId == request.auth.uid &&
+                       isValidId(incoming().pageId) &&
+                       incoming().keys().hasAll(['pageId', 'userId', 'createdAt']) &&
+                       incoming().keys().hasOnly(['pageId', 'userId', 'createdAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       exists(/databases/$(database)/documents/pages/$(incoming().pageId));
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(followId) && existing().userId == request.auth.uid;
+    }
+
+    match /page_post_likes/{likeId} {
+      allow get: if isSignedIn() && isValidId(likeId) &&
+                    (resource == null
+                      ? likeId.matches('^.*_' + request.auth.uid + '$')
+                      : existing().userId == request.auth.uid);
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() &&
+                       isValidId(likeId) &&
+                       likeId == incoming().postId + '_' + request.auth.uid &&
+                       incoming().userId == request.auth.uid &&
+                       isValidId(incoming().pageId) &&
+                       isValidId(incoming().postId) &&
+                       incoming().keys().hasAll(['pageId', 'postId', 'userId', 'createdAt']) &&
+                       incoming().keys().hasOnly(['pageId', 'postId', 'userId', 'createdAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       exists(/databases/$(database)/documents/pages/$(incoming().pageId)/posts/$(incoming().postId));
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(likeId) && existing().userId == request.auth.uid;
+    }
+
+    // 7. WhatsApp & Telegram Direct / Group Conversations
+    match /conversations/{convId} {
+      allow get: if isSignedIn() && isValidId(convId) &&
+                    (resource == null || request.auth.uid in existing().participantIds);
+      allow list: if isSignedIn() && request.auth.uid in existing().participantIds;
+      allow create: if isSignedIn() &&
+                       isValidId(convId) &&
+                       incoming().createdBy == request.auth.uid &&
+                       request.auth.uid in incoming().participantIds &&
+                       incoming().keys().hasAll([
+                         'type', 'title', 'participantIds', 'participantNames',
+                         'createdBy', 'lastMessage', 'lastMessageAt', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'type', 'title', 'participantIds', 'participantNames',
+                         'createdBy', 'lastMessage', 'lastMessageAt', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidConversation(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(convId) &&
+                       isValidConversation(incoming()) &&
+                       request.auth.uid in existing().participantIds &&
+                       incoming().type == existing().type &&
+                       incoming().participantIds == existing().participantIds &&
+                       incoming().createdBy == existing().createdBy &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['lastMessage', 'lastMessageAt', 'updatedAt']);
+      allow delete: if isSignedIn() && isValidId(convId) && request.auth.uid in existing().participantIds;
+
+      match /messages/{messageId} {
+        allow get: if isSignedIn() && isValidId(convId) && isValidId(messageId) &&
+                      request.auth.uid in existing().participantIds;
+        allow list: if isSignedIn() && request.auth.uid in existing().participantIds;
+        allow create: if isSignedIn() &&
+                         isValidId(convId) &&
+                         isValidId(messageId) &&
+                         incoming().senderId == request.auth.uid &&
+                         request.auth.uid in incoming().participantIds &&
+                         incoming().keys().hasAll(['senderId', 'senderName', 'text', 'participantIds', 'createdAt']) &&
+                         incoming().keys().hasOnly([
+                           'senderId', 'senderName', 'text', 'participantIds', 'createdAt',
+                           'messageType', 'voiceNoteBase64', 'voiceNoteDurationSec',
+                           'callType', 'callDurationSec', 'callStatus'
+                         ]) &&
+                         isValidMessage(incoming()) &&
+                         exists(/databases/$(database)/documents/conversations/$(convId)) &&
+                         incoming().participantIds == get(/databases/$(database)/documents/conversations/$(convId)).data.participantIds;
+        allow update, delete: if false;
+      }
+    }
+
+    // 8. People Discovery Swipes ({fromUserId}_{toUserId})
+    match /swipes/{swipeId} {
+      allow get: if isSignedIn() && isValidId(swipeId) &&
+                    (resource == null
+                      ? (swipeId.matches('^' + request.auth.uid + '_.*$') || swipeId.matches('^.*_' + request.auth.uid + '$'))
+                      : (existing().fromUserId == request.auth.uid || existing().positiveTargetId == request.auth.uid));
+      allow list: if isSignedIn() &&
+                     (existing().fromUserId == request.auth.uid || existing().positiveTargetId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(swipeId) &&
+                       swipeId == incoming().fromUserId + '_' + incoming().toUserId &&
+                       incoming().fromUserId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'fromUserId', 'toUserId', 'decision', 'positiveTargetId',
+                         'fromName', 'fromAvatarKey', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'fromUserId', 'toUserId', 'decision', 'positiveTargetId',
+                         'fromName', 'fromAvatarKey', 'createdAt'
+                       ]) &&
+                       isValidSwipe(incoming()) &&
+                       exists(/databases/$(database)/documents/public_profiles/$(incoming().toUserId));
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(swipeId) && existing().fromUserId == request.auth.uid;
+    }
+
+    // 9. Mutual Matches & Messaging Threads
+    match /matches/{matchId} {
+      allow get: if isSignedIn() && isValidId(matchId) &&
+                    (resource == null
+                      ? (matchId.matches('^' + request.auth.uid + '_.*$') || matchId.matches('^.*_' + request.auth.uid + '$'))
+                      : request.auth.uid in existing().participantIds);
+      allow list: if isSignedIn() && request.auth.uid in existing().participantIds;
+      allow create: if isSignedIn() &&
+                       isValidId(matchId) &&
+                       request.auth.uid in incoming().participantIds &&
+                       incoming().participantIds.size() == 2 &&
+                       (matchId == incoming().participantIds[0] + '_' + incoming().participantIds[1] ||
+                        matchId == incoming().participantIds[1] + '_' + incoming().participantIds[0]) &&
+                       incoming().keys().hasAll([
+                         'participantIds', 'user1Id', 'user1Name', 'user1AvatarKey',
+                         'user2Id', 'user2Name', 'user2AvatarKey', 'lastMessage',
+                         'lastMessageAt', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'participantIds', 'user1Id', 'user1Name', 'user1AvatarKey',
+                         'user2Id', 'user2Name', 'user2AvatarKey', 'lastMessage',
+                         'lastMessageAt', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidMatch(incoming()) &&
+                       exists(/databases/$(database)/documents/public_profiles/$(incoming().user1Id)) &&
+                       exists(/databases/$(database)/documents/public_profiles/$(incoming().user2Id)) &&
+                       hasPositiveMutualSwipe(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(matchId) &&
+                       isValidMatch(incoming()) &&
+                       request.auth.uid in existing().participantIds &&
+                       incoming().participantIds == existing().participantIds &&
+                       incoming().user1Id == existing().user1Id &&
+                       incoming().user2Id == existing().user2Id &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['lastMessage', 'lastMessageAt', 'updatedAt']);
+      allow delete: if isSignedIn() && isValidId(matchId) && request.auth.uid in existing().participantIds;
+
+      match /messages/{messageId} {
+        allow get: if isSignedIn() && isValidId(matchId) && isValidId(messageId) &&
+                      request.auth.uid in existing().participantIds;
+        allow list: if isSignedIn() && request.auth.uid in existing().participantIds;
+        allow create: if isSignedIn() &&
+                         isValidId(matchId) &&
+                         isValidId(messageId) &&
+                         incoming().senderId == request.auth.uid &&
+                         request.auth.uid in incoming().participantIds &&
+                         incoming().keys().hasAll(['senderId', 'senderName', 'text', 'participantIds', 'createdAt']) &&
+                         incoming().keys().hasOnly([
+                           'senderId', 'senderName', 'text', 'participantIds', 'createdAt',
+                           'messageType', 'voiceNoteBase64', 'voiceNoteDurationSec',
+                           'callType', 'callDurationSec', 'callStatus'
+                         ]) &&
+                         isValidMessage(incoming()) &&
+                         exists(/databases/$(database)/documents/matches/$(matchId)) &&
+                         incoming().participantIds == get(/databases/$(database)/documents/matches/$(matchId)).data.participantIds;
+        allow update, delete: if false;
+      }
+    }
+
+    // Helper for exact 70% Admin / 30% Creator integer-cent split (or 100% Admin when creatorId == '')
+    function isValidAd7030Split(grossCents, adminCents, creatorCents, creatorId, viewerUid) {
+      return grossCents is int && grossCents >= 1 && grossCents <= 50000 &&
+             adminCents is int && adminCents >= 0 &&
+             creatorCents is int && creatorCents >= 0 &&
+             adminCents + creatorCents == grossCents &&
+             ((creatorId != '' && creatorId != viewerUid &&
+               creatorCents * 100 <= grossCents * 30 &&
+               (creatorCents + 1) * 100 > grossCents * 30) ||
+              ((creatorId == '' || creatorId == viewerUid) &&
+               creatorCents == 0 &&
+               adminCents == grossCents));
+    }
+
+    // 10. Platform Admin Settings (/app_settings/platform — Non-PII public summary)
+    match /app_settings/{settingId} {
+      allow get: if isSignedIn() && settingId == 'platform';
+      allow list: if false;
+      allow create: if isDesignatedAdminEmail() &&
+                       settingId == 'platform' &&
+                       incoming().adminUid == request.auth.uid &&
+                       incoming().adminEmail == 'gregoryfrancis652@gmail.com' &&
+                       incoming().platformFeePercent is int &&
+                       incoming().platformFeePercent >= 5 && incoming().platformFeePercent <= 50 &&
+                       (!('payoutAccountLabel' in incoming()) || (incoming().payoutAccountLabel is string && incoming().payoutAccountLabel.size() <= 120)) &&
+                       (!('payoutMethod' in incoming()) || incoming().payoutMethod in ['usd_bank', 'ngn_bank', 'bank_transfer', 'paypal', 'upi', 'mobile_money']) &&
+                       (!('bankName' in incoming()) || (incoming().bankName is string && incoming().bankName.size() <= 80)) &&
+                       (!('adminAccountNumber' in incoming()) || (incoming().adminAccountNumber is string && incoming().adminAccountNumber.size() <= 64)) &&
+                       (!('adminAccountHolder' in incoming()) || (incoming().adminAccountHolder is string && incoming().adminAccountHolder.size() <= 80)) &&
+                       (!('maskedAccountNumber' in incoming()) || (incoming().maskedAccountNumber is string && incoming().maskedAccountNumber.size() <= 40)) &&
+                       (!('adminPayoutCurrency' in incoming()) || incoming().adminPayoutCurrency in ['USD', 'NGN']) &&
+                       (!('usdToNgnRate' in incoming()) || (incoming().usdToNgnRate is int && incoming().usdToNgnRate >= 100 && incoming().usdToNgnRate <= 10000)) &&
+                       (!('adAdminSharePercent' in incoming()) || incoming().adAdminSharePercent == 70) &&
+                       (!('autoPayoutEnabled' in incoming()) || incoming().autoPayoutEnabled is bool) &&
+                       (!('appDownloadUrl' in incoming()) || (incoming().appDownloadUrl is string && incoming().appDownloadUrl.size() <= 300)) &&
+                       (!('admobBannerUnitId' in incoming()) || (incoming().admobBannerUnitId is string && incoming().admobBannerUnitId.size() <= 80)) &&
+                       (!('admobRewardedUnitId' in incoming()) || (incoming().admobRewardedUnitId is string && incoming().admobRewardedUnitId.size() <= 80)) &&
+                       incoming().keys().hasAll(['adminUid', 'adminEmail', 'platformFeePercent', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly([
+                         'adminUid', 'adminEmail', 'platformFeePercent',
+                         'payoutAccountLabel', 'payoutMethod', 'bankName',
+                         'adminAccountNumber', 'adminAccountHolder', 'maskedAccountNumber',
+                         'adminPayoutCurrency', 'usdToNgnRate', 'adAdminSharePercent',
+                         'autoPayoutEnabled', 'appDownloadUrl', 'admobBannerUnitId', 'admobRewardedUnitId',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt);
+      allow update: if isAdmin() &&
+                       settingId == 'platform' &&
+                       incoming().adminUid == request.auth.uid &&
+                       incoming().adminEmail == 'gregoryfrancis652@gmail.com' &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().platformFeePercent is int &&
+                       incoming().platformFeePercent >= 5 && incoming().platformFeePercent <= 50 &&
+                       (!('payoutAccountLabel' in incoming()) || (incoming().payoutAccountLabel is string && incoming().payoutAccountLabel.size() <= 120)) &&
+                       (!('payoutMethod' in incoming()) || incoming().payoutMethod in ['usd_bank', 'ngn_bank', 'bank_transfer', 'paypal', 'upi', 'mobile_money']) &&
+                       (!('bankName' in incoming()) || (incoming().bankName is string && incoming().bankName.size() <= 80)) &&
+                       (!('adminAccountNumber' in incoming()) || (incoming().adminAccountNumber is string && incoming().adminAccountNumber.size() <= 64)) &&
+                       (!('adminAccountHolder' in incoming()) || (incoming().adminAccountHolder is string && incoming().adminAccountHolder.size() <= 80)) &&
+                       (!('maskedAccountNumber' in incoming()) || (incoming().maskedAccountNumber is string && incoming().maskedAccountNumber.size() <= 40)) &&
+                       (!('adminPayoutCurrency' in incoming()) || incoming().adminPayoutCurrency in ['USD', 'NGN']) &&
+                       (!('usdToNgnRate' in incoming()) || (incoming().usdToNgnRate is int && incoming().usdToNgnRate >= 100 && incoming().usdToNgnRate <= 10000)) &&
+                       (!('adAdminSharePercent' in incoming()) || incoming().adAdminSharePercent == 70) &&
+                       (!('autoPayoutEnabled' in incoming()) || incoming().autoPayoutEnabled is bool) &&
+                       (!('appDownloadUrl' in incoming()) || (incoming().appDownloadUrl is string && incoming().appDownloadUrl.size() <= 300)) &&
+                       (!('admobBannerUnitId' in incoming()) || (incoming().admobBannerUnitId is string && incoming().admobBannerUnitId.size() <= 80)) &&
+                       (!('admobRewardedUnitId' in incoming()) || (incoming().admobRewardedUnitId is string && incoming().admobRewardedUnitId.size() <= 80)) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'adminUid', 'adminEmail', 'platformFeePercent',
+                         'payoutAccountLabel', 'payoutMethod', 'bankName',
+                         'adminAccountNumber', 'adminAccountHolder', 'maskedAccountNumber',
+                         'adminPayoutCurrency', 'usdToNgnRate', 'adAdminSharePercent',
+                         'autoPayoutEnabled', 'appDownloadUrl', 'admobBannerUnitId', 'admobRewardedUnitId',
+                         'updatedAt'
+                       ]) &&
+                       isValidTimestamp(incoming().updatedAt);
+      allow delete: if false;
+    }
+
+    // 10b. Private Admin Bank / Payout Account Details (Strictly Admin-Only PII)
+    match /admin_payout_accounts/{accountId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin() &&
+                       accountId == 'primary' &&
+                       incoming().adminUid == request.auth.uid &&
+                       incoming().adminEmail == 'gregoryfrancis652@gmail.com' &&
+                       incoming().payoutMethod in ['usd_bank', 'ngn_bank', 'bank_transfer', 'paypal', 'upi', 'mobile_money'] &&
+                       (!('payoutCurrency' in incoming()) || incoming().payoutCurrency in ['USD', 'NGN']) &&
+                       incoming().accountHolderName is string && incoming().accountHolderName.size() >= 2 && incoming().accountHolderName.size() <= 80 &&
+                       incoming().bankName is string && incoming().bankName.size() >= 2 && incoming().bankName.size() <= 80 &&
+                       incoming().accountNumber is string && incoming().accountNumber.size() >= 4 && incoming().accountNumber.size() <= 64 &&
+                       (!('routingOrSwift' in incoming()) || (incoming().routingOrSwift is string && incoming().routingOrSwift.size() <= 40)) &&
+                       (!('payoutEmailOrPhone' in incoming()) || (incoming().payoutEmailOrPhone is string && incoming().payoutEmailOrPhone.size() <= 120)) &&
+                       incoming().keys().hasAll([
+                         'adminUid', 'adminEmail', 'payoutMethod', 'accountHolderName',
+                         'bankName', 'accountNumber', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'adminUid', 'adminEmail', 'payoutMethod', 'payoutCurrency', 'accountHolderName',
+                         'bankName', 'accountNumber', 'routingOrSwift', 'payoutEmailOrPhone',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt);
+      allow update: if isAdmin() &&
+                       accountId == 'primary' &&
+                       incoming().adminUid == request.auth.uid &&
+                       incoming().adminEmail == 'gregoryfrancis652@gmail.com' &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().payoutMethod in ['usd_bank', 'ngn_bank', 'bank_transfer', 'paypal', 'upi', 'mobile_money'] &&
+                       (!('payoutCurrency' in incoming()) || incoming().payoutCurrency in ['USD', 'NGN']) &&
+                       incoming().accountHolderName is string && incoming().accountHolderName.size() >= 2 && incoming().accountHolderName.size() <= 80 &&
+                       incoming().bankName is string && incoming().bankName.size() >= 2 && incoming().bankName.size() <= 80 &&
+                       incoming().accountNumber is string && incoming().accountNumber.size() >= 4 && incoming().accountNumber.size() <= 64 &&
+                       (!('routingOrSwift' in incoming()) || (incoming().routingOrSwift is string && incoming().routingOrSwift.size() <= 40)) &&
+                       (!('payoutEmailOrPhone' in incoming()) || (incoming().payoutEmailOrPhone is string && incoming().payoutEmailOrPhone.size() <= 120)) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'adminUid', 'adminEmail', 'payoutMethod', 'payoutCurrency', 'accountHolderName',
+                         'bankName', 'accountNumber', 'routingOrSwift', 'payoutEmailOrPhone',
+                         'updatedAt'
+                       ]) &&
+                       isValidTimestamp(incoming().updatedAt);
+      allow delete: if false;
+    }
+
+    // 10c. App Admin Revenue Withdrawals (Admin-Only Immutable Receipts)
+    match /admin_payouts/{withdrawalId} {
+      allow get, list: if isAdmin();
+      allow create: if isAdmin() &&
+                       isValidId(withdrawalId) &&
+                       incoming().adminUid == request.auth.uid &&
+                       incoming().adminEmail == 'gregoryfrancis652@gmail.com' &&
+                       incoming().amountCents is int && incoming().amountCents >= 100 && incoming().amountCents <= 10000000 &&
+                       (!('ngnAmountWhole' in incoming()) || (incoming().ngnAmountWhole is int && incoming().ngnAmountWhole >= 0)) &&
+                       (!('payoutCurrency' in incoming()) || incoming().payoutCurrency in ['USD', 'NGN']) &&
+                       incoming().payoutMethod in ['usd_bank', 'ngn_bank', 'bank_transfer', 'paypal', 'upi', 'mobile_money'] &&
+                       incoming().accountHolderName is string && incoming().accountHolderName.size() >= 2 && incoming().accountHolderName.size() <= 80 &&
+                       incoming().bankName is string && incoming().bankName.size() >= 2 && incoming().bankName.size() <= 80 &&
+                       incoming().maskedAccountNumber is string && incoming().maskedAccountNumber.size() >= 2 && incoming().maskedAccountNumber.size() <= 40 &&
+                       incoming().status in ['completed', 'pending'] &&
+                       incoming().referenceCode is string && incoming().referenceCode.size() >= 3 && incoming().referenceCode.size() <= 80 &&
+                       incoming().keys().hasAll([
+                         'adminUid', 'adminEmail', 'amountCents', 'payoutMethod',
+                         'accountHolderName', 'bankName', 'maskedAccountNumber',
+                         'status', 'referenceCode', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'adminUid', 'adminEmail', 'amountCents', 'ngnAmountWhole', 'payoutCurrency', 'payoutMethod',
+                         'accountHolderName', 'bankName', 'maskedAccountNumber',
+                         'status', 'referenceCode', 'createdAt'
+                       ]) &&
+                       isValidTimestamp(incoming().createdAt);
+      allow update, delete: if false;
+    }
+
+    // 10d. Google AdMob Paid Revenue Events (70% App Admin / 30% Creator)
+    match /ad_revenue_events/{eventId} {
+      allow get: if isSignedIn() && isValidId(eventId) &&
+                    (resource == null || existing().viewerId == request.auth.uid || existing().creatorId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() &&
+                     (existing().viewerId == request.auth.uid || existing().creatorId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(eventId) &&
+                       incoming().viewerId == request.auth.uid &&
+                       incoming().creatorId is string && incoming().creatorId.size() <= 128 &&
+                       (incoming().creatorId == '' || isValidId(incoming().creatorId)) &&
+                       incoming().creatorName is string && incoming().creatorName.size() <= 40 &&
+                       incoming().postId is string && incoming().postId.size() <= 128 &&
+                       incoming().adFormat in ['banner', 'rewarded'] &&
+                       incoming().adUnitId is string && incoming().adUnitId.size() >= 3 && incoming().adUnitId.size() <= 80 &&
+                       incoming().valueMicros is int && incoming().valueMicros >= 0 &&
+                       incoming().currencyCode is string && incoming().currencyCode.size() >= 3 && incoming().currencyCode.size() <= 10 &&
+                       isValidAd7030Split(incoming().grossCents, incoming().adminShareCents, incoming().creatorShareCents, incoming().creatorId, request.auth.uid) &&
+                       incoming().keys().hasAll([
+                         'viewerId', 'creatorId', 'creatorName', 'postId', 'adFormat', 'adUnitId',
+                         'valueMicros', 'currencyCode', 'grossCents', 'adminShareCents', 'creatorShareCents', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'viewerId', 'creatorId', 'creatorName', 'postId', 'adFormat', 'adUnitId',
+                         'valueMicros', 'currencyCode', 'grossCents', 'adminShareCents', 'creatorShareCents', 'createdAt'
+                       ]) &&
+                       isValidTimestamp(incoming().createdAt);
+      allow update, delete: if false;
+    }
+
+    // 11. Creator Spark Gifts (80% User Creator / 20% App Admin across Posts, Reels, Videos, Live Rooms & Channels)
+    match /spark_gifts/{giftId} {
+      allow get: if isSignedIn() && isValidId(giftId) &&
+                    (resource == null || existing().senderId == request.auth.uid || existing().recipientId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() &&
+                     (existing().senderId == request.auth.uid || existing().recipientId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(giftId) &&
+                       incoming().senderId == request.auth.uid &&
+                       incoming().senderId != incoming().recipientId &&
+                       isValidId(incoming().recipientId) &&
+                       isValidId(incoming().postId) &&
+                       (!('targetType' in incoming()) || incoming().targetType in ['post', 'live', 'channel', 'page', 'radio']) &&
+                       incoming().senderName is string && incoming().senderName.size() >= 1 && incoming().senderName.size() <= 40 &&
+                       incoming().recipientName is string && incoming().recipientName.size() >= 1 && incoming().recipientName.size() <= 40 &&
+                       incoming().sparksCount == 1 &&
+                       incoming().grossCents == 100 &&
+                       incoming().creatorShareCents == 80 &&
+                       incoming().adminFeeCents == 20 &&
+                       incoming().keys().hasAll([
+                         'senderId', 'senderName', 'recipientId', 'recipientName', 'postId',
+                         'sparksCount', 'grossCents', 'creatorShareCents', 'adminFeeCents', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'senderId', 'senderName', 'recipientId', 'recipientName', 'postId',
+                         'targetType', 'sparksCount', 'grossCents', 'creatorShareCents', 'adminFeeCents', 'createdAt'
+                       ]) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       (
+                         ((!('targetType' in incoming()) || incoming().targetType == 'post') &&
+                          exists(/databases/$(database)/documents/posts/$(incoming().postId)) &&
+                          get(/databases/$(database)/documents/posts/$(incoming().postId)).data.authorId == incoming().recipientId) ||
+                         (('targetType' in incoming()) && incoming().targetType == 'live' &&
+                          exists(/databases/$(database)/documents/live_rooms/$(incoming().postId)) &&
+                          get(/databases/$(database)/documents/live_rooms/$(incoming().postId)).data.hostId == incoming().recipientId) ||
+                         (('targetType' in incoming()) && incoming().targetType == 'channel' &&
+                          exists(/databases/$(database)/documents/channels/$(incoming().postId)) &&
+                          get(/databases/$(database)/documents/channels/$(incoming().postId)).data.ownerId == incoming().recipientId) ||
+                         (('targetType' in incoming()) && incoming().targetType == 'page' &&
+                          exists(/databases/$(database)/documents/pages/$(incoming().postId)) &&
+                          get(/databases/$(database)/documents/pages/$(incoming().postId)).data.ownerId == incoming().recipientId) ||
+                         (('targetType' in incoming()) && incoming().targetType == 'radio' &&
+                          exists(/databases/$(database)/documents/radio_channels/$(incoming().postId)) &&
+                          get(/databases/$(database)/documents/radio_channels/$(incoming().postId)).data.ownerId == incoming().recipientId)
+                       ) &&
+                       exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                       get(/databases/$(database)/documents/users/$(request.auth.uid)).data.sparksBalance >= 1 &&
+                       getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.sparksBalance ==
+                         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.sparksBalance - 1;
+      allow update, delete: if false;
+    }
+
+    // 11b. User Level Upgrades (Water -> Diamond starting at NGN 5,000 & USD direct to App Admin with Auto-Activation)
+    match /level_upgrades/{upgradeId} {
+      allow get: if isSignedIn() && isValidId(upgradeId) &&
+                    (resource == null || existing().payerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() &&
+                     (existing().payerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(upgradeId) &&
+                       incoming().payerId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'payerId', 'payerName', 'levelId', 'levelName', 'levelRank',
+                         'currency', 'ngnAmount', 'amountCents', 'adminShareCents', 'creatorShareCents',
+                         'paymentMethod', 'paymentReference', 'adminEmail', 'status',
+                         'activatedAt', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'payerId', 'payerName', 'levelId', 'levelName', 'levelRank',
+                         'currency', 'ngnAmount', 'amountCents', 'adminShareCents', 'creatorShareCents',
+                         'paymentMethod', 'paymentReference', 'adminEmail', 'adminBankLabel',
+                         'status', 'activatedAt', 'createdAt'
+                       ]) &&
+                       isValidLevelUpgrade(incoming()) &&
+                       ((!exists(/databases/$(database)/documents/users/$(request.auth.uid)) && incoming().levelRank == 1) ||
+                        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                         isNextSequentialRank(('vipLevelRank' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.vipLevelRank : 0, incoming().levelRank))) &&
+                       existsAfter(/databases/$(database)/documents/revenue_ledger/$(upgradeId)) &&
+                       getAfter(/databases/$(database)/documents/revenue_ledger/$(upgradeId)).data.source == 'level_upgrade' &&
+                       getAfter(/databases/$(database)/documents/revenue_ledger/$(upgradeId)).data.adminShareCents == incoming().amountCents &&
+                       existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                       getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.vipLevel == incoming().levelId &&
+                       getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.vipLevelRank == incoming().levelRank &&
+                       getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.lastLevelUpgradeId == upgradeId;
+      allow update, delete: if false;
+    }
+
+    // 12. Revenue Ledger (App Admin & Participant Read-Only Audit Trail)
+    match /revenue_ledger/{entryId} {
+      allow get: if isSignedIn() && isValidId(entryId) &&
+                    (resource == null || isAdmin() || existing().payerId == request.auth.uid || existing().recipientId == request.auth.uid);
+      allow list: if isSignedIn() &&
+                     (isAdmin() || existing().payerId == request.auth.uid || existing().recipientId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(entryId) &&
+                       incoming().payerId == request.auth.uid &&
+                       incoming().source in ['subscription', 'superlikes', 'boost', 'sparks_pack', 'spark_gift', 'ad_revenue', 'level_upgrade', 'shop_order', 'radio_access'] &&
+                       incoming().productId is string && incoming().productId.size() >= 1 && incoming().productId.size() <= 80 &&
+                       incoming().recipientId is string && incoming().recipientId.size() <= 128 &&
+                       incoming().grossCents is int && incoming().grossCents > 0 && incoming().grossCents <= 100000 &&
+                       incoming().adminShareCents is int && incoming().adminShareCents >= 0 &&
+                       incoming().creatorShareCents is int && incoming().creatorShareCents >= 0 &&
+                       incoming().adminShareCents + incoming().creatorShareCents == incoming().grossCents &&
+                       (!('referenceToken' in incoming()) || (incoming().referenceToken is string && incoming().referenceToken.size() <= 500)) &&
+                       ((incoming().source == 'spark_gift' &&
+                         incoming().grossCents == 100 &&
+                         incoming().creatorShareCents == 80 &&
+                         incoming().adminShareCents == 20 &&
+                         isValidId(incoming().recipientId) &&
+                         existsAfter(/databases/$(database)/documents/spark_gifts/$(entryId))) ||
+                        (incoming().source == 'ad_revenue' &&
+                         isValidAd7030Split(incoming().grossCents, incoming().adminShareCents, incoming().creatorShareCents, incoming().recipientId, request.auth.uid) &&
+                         existsAfter(/databases/$(database)/documents/ad_revenue_events/$(entryId))) ||
+                        (incoming().source == 'level_upgrade' &&
+                         incoming().recipientId == 'admin' &&
+                         incoming().creatorShareCents == 0 &&
+                         incoming().adminShareCents == incoming().grossCents &&
+                         existsAfter(/databases/$(database)/documents/level_upgrades/$(entryId))) ||
+                        (incoming().source == 'radio_access' &&
+                         incoming().recipientId == 'admin' &&
+                         incoming().creatorShareCents == 0 &&
+                         incoming().adminShareCents == incoming().grossCents &&
+                         existsAfter(/databases/$(database)/documents/radio_passes/$(entryId))) ||
+                        (incoming().source == 'shop_order' &&
+                         isValidId(incoming().recipientId) &&
+                         existsAfter(/databases/$(database)/documents/shop_orders/$(entryId)) &&
+                         getAfter(/databases/$(database)/documents/shop_orders/$(entryId)).data.adminFeeCents == incoming().adminShareCents &&
+                         getAfter(/databases/$(database)/documents/shop_orders/$(entryId)).data.sellerShareCents == incoming().creatorShareCents &&
+                         getAfter(/databases/$(database)/documents/shop_orders/$(entryId)).data.sellerId == incoming().recipientId) ||
+                        (!(incoming().source in ['spark_gift', 'ad_revenue', 'level_upgrade', 'shop_order', 'radio_access']) &&
+                         incoming().creatorShareCents == 0 &&
+                         incoming().adminShareCents == incoming().grossCents)) &&
+                       incoming().keys().hasAll([
+                         'source', 'productId', 'payerId', 'recipientId',
+                         'grossCents', 'adminShareCents', 'creatorShareCents', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'source', 'productId', 'payerId', 'recipientId',
+                         'grossCents', 'adminShareCents', 'creatorShareCents', 'referenceToken', 'createdAt'
+                       ]) &&
+                       isValidTimestamp(incoming().createdAt);
+      allow update, delete: if false;
+    }
+
+    // 13. Creator Payout Requests (Requested by User or Auto-Queued like YouTube, Settled by App Admin)
+    match /payout_requests/{requestId} {
+      allow get: if isSignedIn() && isValidId(requestId) &&
+                    (resource == null || existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() &&
+                     (existing().userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(requestId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().userName is string && incoming().userName.size() >= 1 && incoming().userName.size() <= 40 &&
+                       incoming().amountCents is int && incoming().amountCents >= 100 && incoming().amountCents <= 500000 &&
+                       (!('ngnAmountWhole' in incoming()) || (incoming().ngnAmountWhole is int && incoming().ngnAmountWhole >= 0)) &&
+                       incoming().payoutMethod in ['usd_bank', 'ngn_bank', 'crypto', 'paypal', 'bank', 'upi'] &&
+                       (!('payoutCurrency' in incoming()) || incoming().payoutCurrency in ['USD', 'NGN', 'CRYPTO']) &&
+                       (!('payoutBankOrNetwork' in incoming()) || (incoming().payoutBankOrNetwork is string && incoming().payoutBankOrNetwork.size() <= 80)) &&
+                       incoming().payoutAccount is string && incoming().payoutAccount.size() >= 3 && incoming().payoutAccount.size() <= 120 &&
+                       (!('isAutoPayout' in incoming()) || incoming().isAutoPayout is bool) &&
+                       incoming().status == 'pending' &&
+                       incoming().keys().hasAll([
+                         'userId', 'userName', 'amountCents', 'payoutMethod',
+                         'payoutAccount', 'status', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'userName', 'amountCents', 'ngnAmountWhole', 'payoutMethod',
+                         'payoutCurrency', 'payoutBankOrNetwork', 'payoutAccount', 'isAutoPayout',
+                         'status', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       isValidTimestamp(incoming().updatedAt);
+      allow update: if isAdmin() &&
+                       isValidId(requestId) &&
+                       incoming().userId == existing().userId &&
+                       incoming().userName == existing().userName &&
+                       incoming().amountCents == existing().amountCents &&
+                       incoming().payoutMethod == existing().payoutMethod &&
+                       incoming().payoutAccount == existing().payoutAccount &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().status in ['paid', 'rejected'] &&
+                       (!('adminNote' in incoming()) || (incoming().adminNote is string && incoming().adminNote.size() <= 200)) &&
+                       (!('payoutReference' in incoming()) || (incoming().payoutReference is string && incoming().payoutReference.size() <= 120)) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'adminNote', 'payoutReference', 'updatedAt']) &&
+                       isValidTimestamp(incoming().updatedAt);
+      allow delete: if false;
+    }
+
+    // 14. Voice & Video Call Signaling Sessions (/call_sessions/{callId})
+    match /call_sessions/{callId} {
+      allow get: if isSignedIn() && isValidId(callId) &&
+                    (resource == null || request.auth.uid in existing().participantIds);
+      allow list: if isSignedIn() && request.auth.uid in existing().participantIds;
+      allow create: if isSignedIn() &&
+                       isValidId(callId) &&
+                       incoming().callerId == request.auth.uid &&
+                       request.auth.uid in incoming().participantIds &&
+                       incoming().status == 'ringing' &&
+                       incoming().keys().hasAll([
+                         'callerId', 'callerName', 'callerAvatarKey', 'calleeIds',
+                         'participantIds', 'participantNames', 'threadId', 'threadType',
+                         'callType', 'status', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'callerId', 'callerName', 'callerAvatarKey', 'calleeIds',
+                         'participantIds', 'participantNames', 'threadId', 'threadType',
+                         'callType', 'status', 'durationSec', 'callerMuted',
+                         'callerVideoOn', 'endedAt', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidCallSession(incoming()) &&
+                       ((incoming().threadType == 'conversation' &&
+                         exists(/databases/$(database)/documents/conversations/$(incoming().threadId)) &&
+                         request.auth.uid in get(/databases/$(database)/documents/conversations/$(incoming().threadId)).data.participantIds &&
+                         incoming().participantIds == get(/databases/$(database)/documents/conversations/$(incoming().threadId)).data.participantIds) ||
+                        (incoming().threadType == 'match' &&
+                         exists(/databases/$(database)/documents/matches/$(incoming().threadId)) &&
+                         request.auth.uid in get(/databases/$(database)/documents/matches/$(incoming().threadId)).data.participantIds &&
+                         incoming().participantIds == get(/databases/$(database)/documents/matches/$(incoming().threadId)).data.participantIds));
+      allow update: if isSignedIn() &&
+                       isValidId(callId) &&
+                       isValidCallSession(incoming()) &&
+                       request.auth.uid in existing().participantIds &&
+                       !(existing().status in ['ended', 'declined']) &&
+                       incoming().callerId == existing().callerId &&
+                       incoming().threadId == existing().threadId &&
+                       incoming().threadType == existing().threadType &&
+                       incoming().callType == existing().callType &&
+                       incoming().participantIds == existing().participantIds &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'status', 'durationSec', 'callerMuted', 'callerVideoOn', 'endedAt', 'updatedAt'
+                       ]) &&
+                       ((existing().status == 'ringing' && incoming().status == 'active' && request.auth.uid != existing().callerId) ||
+                        (existing().status == 'ringing' && incoming().status == 'declined' && request.auth.uid != existing().callerId) ||
+                        (incoming().status == 'ended') ||
+                        (incoming().status == existing().status &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['callerMuted', 'callerVideoOn', 'updatedAt'])));
+      allow delete: if false;
+    }
+
+    // 15. Creator & Merchant Shops Marketplace (/shops/{shopId} & /products/{productId})
+    match /shops/{shopId} {
+      allow get: if isSignedIn() && isValidId(shopId) && (resource == null || existing().visibility == 'public');
+      allow list: if isSignedIn() && existing().visibility == 'public';
+      allow create: if isSignedIn() &&
+                       isValidId(shopId) &&
+                       incoming().ownerId == request.auth.uid &&
+                       incoming().visibility == 'public' &&
+                       incoming().productsCount == 0 &&
+                       incoming().ordersCount == 0 &&
+                       incoming().totalSalesCents == 0 &&
+                       incoming().keys().hasAll([
+                         'ownerId', 'ownerName', 'ownerAvatarKey', 'name', 'handle',
+                         'category', 'description', 'currency', 'visibility',
+                         'productsCount', 'ordersCount', 'totalSalesCents',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'ownerId', 'ownerName', 'ownerAvatarKey', 'name', 'handle',
+                         'category', 'description', 'currency', 'city', 'coverKey',
+                         'photoBase64', 'visibility', 'productsCount', 'ordersCount',
+                         'totalSalesCents', 'lastProductId', 'lastOrderId',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidShop(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(shopId) &&
+                       isValidShop(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().visibility == existing().visibility &&
+                       incoming().createdAt == existing().createdAt && (
+                         (existing().ownerId == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly([
+                            'name', 'category', 'description', 'currency', 'city', 'coverKey', 'photoBase64', 'updatedAt'
+                          ])) ||
+                         (existing().ownerId == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['productsCount', 'lastProductId', 'updatedAt']) &&
+                          incoming().productsCount == existing().productsCount + 1 &&
+                          isValidId(incoming().lastProductId) &&
+                          existsAfter(/databases/$(database)/documents/shops/$(shopId)/products/$(incoming().lastProductId))) ||
+                         (existing().ownerId == request.auth.uid &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['productsCount', 'updatedAt']) &&
+                          existing().productsCount > 0 &&
+                          incoming().productsCount == existing().productsCount - 1) ||
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['ordersCount', 'totalSalesCents', 'lastOrderId', 'updatedAt']) &&
+                          incoming().ordersCount == existing().ordersCount + 1 &&
+                          isValidId(incoming().lastOrderId) &&
+                          existsAfter(/databases/$(database)/documents/shop_orders/$(incoming().lastOrderId)) &&
+                          getAfter(/databases/$(database)/documents/shop_orders/$(incoming().lastOrderId)).data.shopId == shopId &&
+                          incoming().totalSalesCents == existing().totalSalesCents + getAfter(/databases/$(database)/documents/shop_orders/$(incoming().lastOrderId)).data.totalCents)
+                       );
+      allow delete: if isSignedIn() && isValidId(shopId) && existing().ownerId == request.auth.uid;
+
+      match /products/{productId} {
+        allow get: if isSignedIn() && isValidId(shopId) && isValidId(productId) &&
+                      existing().shopVisibility == 'public';
+        allow list: if isSignedIn() && existing().shopVisibility == 'public';
+        allow create: if isSignedIn() &&
+                         isValidId(shopId) &&
+                         isValidId(productId) &&
+                         incoming().ownerId == request.auth.uid &&
+                         incoming().shopId == shopId &&
+                         incoming().keys().hasAll([
+                           'shopId', 'shopName', 'shopVisibility', 'ownerId', 'title',
+                           'description', 'category', 'priceUsdCents', 'priceNgn',
+                           'stockCount', 'isAvailable', 'createdAt', 'updatedAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'shopId', 'shopName', 'shopVisibility', 'ownerId', 'title',
+                           'description', 'category', 'priceUsdCents', 'priceNgn',
+                           'stockCount', 'isAvailable', 'imageKey', 'photoBase64',
+                           'lastOrderId', 'createdAt', 'updatedAt'
+                         ]) &&
+                         isValidShopProduct(incoming()) &&
+                         exists(/databases/$(database)/documents/shops/$(shopId)) &&
+                         get(/databases/$(database)/documents/shops/$(shopId)).data.ownerId == request.auth.uid;
+        allow update: if isSignedIn() &&
+                         isValidId(shopId) &&
+                         isValidId(productId) &&
+                         isValidShopProduct(incoming()) &&
+                         incoming().ownerId == existing().ownerId &&
+                         incoming().shopId == existing().shopId &&
+                         incoming().shopVisibility == existing().shopVisibility &&
+                         incoming().createdAt == existing().createdAt && (
+                           (existing().ownerId == request.auth.uid &&
+                            incoming().diff(existing()).affectedKeys().hasOnly([
+                              'title', 'description', 'category', 'priceUsdCents', 'priceNgn',
+                              'stockCount', 'isAvailable', 'imageKey', 'photoBase64', 'updatedAt'
+                            ])) ||
+                           (incoming().diff(existing()).affectedKeys().hasOnly(['stockCount', 'isAvailable', 'lastOrderId', 'updatedAt']) &&
+                            isValidId(incoming().lastOrderId) &&
+                            existsAfter(/databases/$(database)/documents/shop_orders/$(incoming().lastOrderId)) &&
+                            getAfter(/databases/$(database)/documents/shop_orders/$(incoming().lastOrderId)).data.shopId == shopId &&
+                            getAfter(/databases/$(database)/documents/shop_orders/$(incoming().lastOrderId)).data.productId == productId &&
+                            incoming().stockCount == existing().stockCount - getAfter(/databases/$(database)/documents/shop_orders/$(incoming().lastOrderId)).data.quantity &&
+                            incoming().stockCount >= 0 &&
+                            incoming().isAvailable == (incoming().stockCount > 0))
+                         );
+        allow delete: if isSignedIn() && isValidId(shopId) && isValidId(productId) && existing().ownerId == request.auth.uid;
+      }
+    }
+
+    // 16. Shop Orders (/shop_orders/{orderId} — 80% Seller / 20% App Admin)
+    match /shop_orders/{orderId} {
+      allow get: if isSignedIn() && isValidId(orderId) &&
+                    (resource == null || existing().buyerId == request.auth.uid || existing().sellerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() &&
+                     (existing().buyerId == request.auth.uid || existing().sellerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(orderId) &&
+                       incoming().buyerId == request.auth.uid &&
+                       incoming().status == 'placed' &&
+                       incoming().keys().hasAll([
+                         'shopId', 'shopName', 'productId', 'productTitle',
+                         'buyerId', 'buyerName', 'sellerId', 'sellerName',
+                         'quantity', 'currency', 'unitPriceCents', 'totalCents',
+                         'ngnAmount', 'sellerShareCents', 'adminFeeCents',
+                         'status', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'shopId', 'shopName', 'productId', 'productTitle',
+                         'buyerId', 'buyerName', 'sellerId', 'sellerName',
+                         'quantity', 'currency', 'unitPriceCents', 'totalCents',
+                         'ngnAmount', 'sellerShareCents', 'adminFeeCents',
+                         'deliveryNote', 'status', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidShopOrder(incoming()) &&
+                       exists(/databases/$(database)/documents/shops/$(incoming().shopId)) &&
+                       get(/databases/$(database)/documents/shops/$(incoming().shopId)).data.ownerId == incoming().sellerId &&
+                       exists(/databases/$(database)/documents/shops/$(incoming().shopId)/products/$(incoming().productId)) &&
+                       get(/databases/$(database)/documents/shops/$(incoming().shopId)/products/$(incoming().productId)).data.stockCount >= incoming().quantity &&
+                       existsAfter(/databases/$(database)/documents/revenue_ledger/$(orderId)) &&
+                       getAfter(/databases/$(database)/documents/revenue_ledger/$(orderId)).data.source == 'shop_order' &&
+                       getAfter(/databases/$(database)/documents/revenue_ledger/$(orderId)).data.adminShareCents == incoming().adminFeeCents &&
+                       getAfter(/databases/$(database)/documents/revenue_ledger/$(orderId)).data.creatorShareCents == incoming().sellerShareCents;
+      allow update: if isSignedIn() &&
+                       isValidId(orderId) &&
+                       isValidShopOrder(incoming()) &&
+                       (existing().sellerId == request.auth.uid || isAdmin()) &&
+                       existing().status == 'placed' &&
+                       incoming().status in ['fulfilled', 'cancelled'] &&
+                       incoming().shopId == existing().shopId &&
+                       incoming().productId == existing().productId &&
+                       incoming().buyerId == existing().buyerId &&
+                       incoming().sellerId == existing().sellerId &&
+                       incoming().totalCents == existing().totalCents &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+      allow delete: if false;
+    }
+
+    // 17. Global Radio Access Passes (NGN 2,000 paid directly to App Admin Francis Gregory FairMoney 9038006221)
+    match /radio_passes/{passId} {
+      allow get: if isSignedIn() && isValidId(passId) &&
+                    (resource == null || existing().payerId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() &&
+                     (existing().payerId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(passId) &&
+                       incoming().payerId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'payerId', 'payerName', 'currency', 'ngnAmount', 'amountCents',
+                         'adminShareCents', 'creatorShareCents', 'paymentMethod', 'paymentReference',
+                         'adminEmail', 'status', 'activatedAt', 'createdAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'payerId', 'payerName', 'currency', 'ngnAmount', 'amountCents',
+                         'adminShareCents', 'creatorShareCents', 'paymentMethod', 'paymentReference',
+                         'adminEmail', 'adminBankLabel', 'status', 'activatedAt', 'createdAt'
+                       ]) &&
+                       isValidRadioPass(incoming()) &&
+                       existsAfter(/databases/$(database)/documents/revenue_ledger/$(passId)) &&
+                       getAfter(/databases/$(database)/documents/revenue_ledger/$(passId)).data.source == 'radio_access' &&
+                       getAfter(/databases/$(database)/documents/revenue_ledger/$(passId)).data.adminShareCents == incoming().amountCents &&
+                       existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+                       getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.hasRadioAccess == true &&
+                       getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data.radioPassId == passId;
+      allow update, delete: if false;
+    }
+
+    // 18. BINTAFACE Global Radio Channels (Billions of listeners; creating gated by verified Radio Pass)
+    match /radio_channels/{channelId} {
+      allow get: if isSignedIn() && isValidId(channelId) &&
+                    (existing().visibility == 'public' || existing().ownerId == request.auth.uid);
+      allow list: if isSignedIn() &&
+                     (existing().visibility == 'public' || existing().ownerId == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       isValidId(channelId) &&
+                       hasActiveRadioAccess() &&
+                       incoming().ownerId == request.auth.uid &&
+                       incoming().visibility == 'public' &&
+                       incoming().status in ['live', 'off_air'] &&
+                       incoming().listenersCount == 0 &&
+                       incoming().subscribersCount == 1 &&
+                       incoming().totalGiftsCents == 0 &&
+                       incoming().keys().hasAll([
+                         'ownerId', 'ownerName', 'ownerAvatarKey', 'title', 'frequency',
+                         'handle', 'category', 'description', 'visibility', 'status',
+                         'listenersCount', 'subscribersCount', 'totalGiftsCents',
+                         'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'ownerId', 'ownerName', 'ownerAvatarKey', 'title', 'frequency',
+                         'handle', 'category', 'description', 'coverKey', 'visibility',
+                         'status', 'listenersCount', 'subscribersCount', 'totalGiftsCents',
+                         'lastSparkGiftId', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidRadioChannel(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(channelId) &&
+                       isValidRadioChannel(incoming()) &&
+                       incoming().ownerId == existing().ownerId &&
+                       incoming().visibility == existing().visibility &&
+                       incoming().createdAt == existing().createdAt && (
+                         // Owner edits station details or On-Air / Off-Air status
+                         (existing().ownerId == request.auth.uid &&
+                          hasActiveRadioAccess() &&
+                          incoming().diff(existing()).affectedKeys().hasOnly([
+                            'title', 'frequency', 'category', 'description', 'coverKey', 'status', 'updatedAt'
+                          ])) ||
+                         // Verified Radio Pass holder tunes in / leaves (+/- 1 listener)
+                         (hasActiveRadioAccess() &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['listenersCount', 'updatedAt']) &&
+                          (incoming().listenersCount == existing().listenersCount + 1 ||
+                           (existing().listenersCount > 0 && incoming().listenersCount == existing().listenersCount - 1))) ||
+                         // Atomic subscribe with radio_subscriptions/{channelId}_{uid}
+                         (hasActiveRadioAccess() &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['subscribersCount', 'updatedAt']) &&
+                          incoming().subscribersCount == existing().subscribersCount + 1 &&
+                          !exists(/databases/$(database)/documents/radio_subscriptions/$(channelId + '_' + request.auth.uid)) &&
+                          existsAfter(/databases/$(database)/documents/radio_subscriptions/$(channelId + '_' + request.auth.uid))) ||
+                         // Atomic unsubscribe
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['subscribersCount', 'updatedAt']) &&
+                          existing().subscribersCount > 0 &&
+                          incoming().subscribersCount == existing().subscribersCount - 1 &&
+                          exists(/databases/$(database)/documents/radio_subscriptions/$(channelId + '_' + request.auth.uid)) &&
+                          !existsAfter(/databases/$(database)/documents/radio_subscriptions/$(channelId + '_' + request.auth.uid))) ||
+                         // Atomic Spark Gift tip to radio broadcaster (80% host / 20% admin)
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['totalGiftsCents', 'lastSparkGiftId', 'updatedAt']) &&
+                          incoming().totalGiftsCents == existing().totalGiftsCents + 80 &&
+                          isValidId(incoming().lastSparkGiftId) &&
+                          existsAfter(/databases/$(database)/documents/spark_gifts/$(incoming().lastSparkGiftId)))
+                       );
+      allow delete: if isSignedIn() && isValidId(channelId) && existing().ownerId == request.auth.uid;
+
+      match /broadcasts/{broadcastId} {
+        allow get: if isSignedIn() && isValidId(channelId) && isValidId(broadcastId) &&
+                      existing().channelVisibility == 'public';
+        allow list: if isSignedIn() && existing().channelVisibility == 'public';
+        allow create: if isSignedIn() &&
+                         isValidId(channelId) &&
+                         isValidId(broadcastId) &&
+                         hasActiveRadioAccess() &&
+                         incoming().ownerId == request.auth.uid &&
+                         incoming().channelId == channelId &&
+                         incoming().keys().hasAll([
+                           'channelId', 'channelVisibility', 'ownerId', 'ownerName',
+                           'title', 'text', 'createdAt'
+                         ]) &&
+                         incoming().keys().hasOnly([
+                           'channelId', 'channelVisibility', 'ownerId', 'ownerName',
+                           'title', 'text', 'audioBase64', 'audioDurationSec', 'createdAt'
+                         ]) &&
+                         isValidRadioBroadcast(incoming()) &&
+                         exists(/databases/$(database)/documents/radio_channels/$(channelId)) &&
+                         get(/databases/$(database)/documents/radio_channels/$(channelId)).data.ownerId == request.auth.uid;
+        allow update: if false;
+        allow delete: if isSignedIn() && isValidId(channelId) && isValidId(broadcastId) && existing().ownerId == request.auth.uid;
+      }
+    }
+
+    match /radio_subscriptions/{subId} {
+      allow get: if isSignedIn() && isValidId(subId) &&
+                    (resource == null
+                      ? subId.matches('^.*_' + request.auth.uid + '$')
+                      : existing().userId == request.auth.uid);
+      allow list: if isSignedIn() && existing().userId == request.auth.uid;
+      allow create: if isSignedIn() &&
+                       isValidId(subId) &&
+                       hasActiveRadioAccess() &&
+                       subId == incoming().channelId + '_' + request.auth.uid &&
+                       incoming().userId == request.auth.uid &&
+                       isValidId(incoming().channelId) &&
+                       incoming().keys().hasAll(['channelId', 'userId', 'createdAt']) &&
+                       incoming().keys().hasOnly(['channelId', 'userId', 'createdAt']) &&
+                       isValidTimestamp(incoming().createdAt) &&
+                       existsAfter(/databases/$(database)/documents/radio_channels/$(incoming().channelId));
+      allow update: if false;
+      allow delete: if isSignedIn() && isValidId(subId) && existing().userId == request.auth.uid;
+    }
+  }
+}

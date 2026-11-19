@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">BINTAFACE</string>
+    <string name="tagline">Social feed, reels, videos, live streams, channels &amp; chat</string>
+    <string name="sign_in_google">Continue with Google</string>
+    <string name="nav_feed">Feed</string>
+    <string name="nav_watch">Watch</string>
+    <string name="nav_live">Live</string>
+    <string name="nav_chats">Chats</string>
+    <string name="nav_profile">Profile</string>
+    <string name="share_moment">Share a post, thread, reel or video…</string>
+    <string name="post_publish">Post</string>
+    <string name="its_a_match">It\'s a Match!</string>
+    <string name="send_message">Send a Message</string>
+    <string name="keep_exploring">Keep Exploring</string>
+    <string name="sign_out">Sign Out</string>
+    <string name="admob_app_id">ca-app-pub-3940256099942544~3347511713</string>
+    <string name="admob_banner_unit_id">ca-app-pub-3940256099942544/6300978111</string>
+    <string name="admob_rewarded_unit_id">ca-app-pub-3940256099942544/5224354917</string>
+    <string name="app_download_url">https://ais-pre-eairej7uik6gkhu57oas24-467447110533.europe-west1.run.app</string>
+    <string name="ceo_welcome_note">Welcome to BINTAFACE, where knowledge meets power — CEO Francis Gregory</string>
+    <string name="ceo_welcome_badge">CEO Francis Gregory</string>
+    <string name="nav_shops">Shops</string>
+    <string name="voice_call">Voice Call</string>
+    <string name="video_call">Video Call</string>
+    <string name="record_voice_note">Record voice note</string>
+    <string name="radio_title">Global Radio</string>
+    <string name="radio_unlock_cta">Pay ₦2,000 for Radio Access</string>
+</resources>

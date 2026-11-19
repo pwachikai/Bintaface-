@@ -1,0 +1,953 @@
+{
+  "entities": {
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Private user account metadata, entitlements, balances, and payout preferences isolated to the owner.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Authenticated Firebase UID" },
+        "email": { "type": "string", "description": "Optional private user email" },
+        "showInDiscovery": { "type": "boolean", "description": "Whether the user appears in people discovery" },
+        "preferredIntent": { "type": "string", "enum": ["all", "dating", "friends"], "description": "Discovery filter preference" },
+        "isPlusMember": { "type": "boolean", "description": "Active Bintaface+ subscription entitlement" },
+        "plusPlanId": { "type": "string", "description": "Subscribed Play Billing product ID" },
+        "superlikesBalance": { "type": "integer", "description": "Remaining Superlike credits" },
+        "boostsBalance": { "type": "integer", "description": "Remaining Spotlight Boost credits" },
+        "sparksBalance": { "type": "integer", "description": "Remaining Spark Gift credits purchased via Play Billing" },
+        "dailyLikesUsed": { "type": "integer", "description": "Likes used on dailyLikesDate" },
+        "dailyLikesDate": { "type": "string", "description": "ISO date YYYY-MM-DD for daily like counter" },
+        "lastPurchaseToken": { "type": "string", "description": "Latest Play Billing purchase token" },
+        "payoutMethod": { "type": "string", "enum": ["usd_bank", "ngn_bank", "crypto", "paypal", "bank", "upi"], "description": "Preferred creator payout method" },
+        "payoutAccount": { "type": "string", "description": "Private creator payout account number, IBAN, or crypto wallet address" },
+        "payoutBankOrNetwork": { "type": "string", "description": "Bank name or crypto network (e.g. USDT TRC20, Access Bank)" },
+        "payoutCurrency": { "type": "string", "enum": ["USD", "NGN", "CRYPTO"], "description": "Preferred payout settlement currency" },
+        "autoPayoutEnabled": { "type": "boolean", "description": "Automatically queue payouts like YouTube once threshold is reached" },
+        "vipLevel": { "type": "string", "enum": ["none", "water", "black_diamond", "red_diamond", "super_diamond", "rock_diamond", "star_diamond", "silver_diamond", "golden_diamond", "moon_diamond", "professional_general_diamond"], "description": "Active sequential membership level tier from Level 1 Water Diamond to Level 10 Professional General Diamond" },
+        "vipLevelRank": { "type": "integer", "description": "Numeric rank 0 (free) through 10 (Professional General Diamond)" },
+        "lastLevelUpgradeId": { "type": "string", "description": "Document ID of latest activated level_upgrades payment receipt" },
+        "hasRadioAccess": { "type": "boolean", "description": "Unlocked after paying NGN 2,000 Radio Access Pass to Francis Gregory (FairMoney 9038006221)" },
+        "radioPassId": { "type": "string", "description": "Document ID of active radio_passes payment receipt" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update" }
+      },
+      "required": ["userId", "showInDiscovery", "preferredIntent", "createdAt", "updatedAt"]
+    },
+    "PublicProfile": {
+      "title": "PublicProfile",
+      "description": "Public social and creator profile card without PII.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Profile owner UID" },
+        "displayName": { "type": "string", "description": "Public display name" },
+        "handle": { "type": "string", "description": "Optional @handle for threads and channels" },
+        "age": { "type": "integer", "description": "User age (18-100)" },
+        "city": { "type": "string", "description": "City or neighborhood" },
+        "bio": { "type": "string", "description": "Short personal bio" },
+        "lookingFor": { "type": "string", "enum": ["dating", "friends", "both"], "description": "Connection intent" },
+        "promptQuestion": { "type": "string", "description": "Icebreaker prompt question" },
+        "promptAnswer": { "type": "string", "description": "Icebreaker prompt answer" },
+        "interests": { "type": "array", "description": "Up to 8 interest tags" },
+        "avatarKey": { "type": "string", "description": "Curated avatar theme key" },
+        "photoBase64": { "type": "string", "description": "Optional compressed JPEG base64 thumbnail" },
+        "isDiscoverable": { "type": "boolean", "description": "Public visibility flag" },
+        "isPlusMember": { "type": "boolean", "description": "Displays Bintaface+ badge on profile and posts" },
+        "isBoosted": { "type": "boolean", "description": "Displays Spotlight Boost highlight" },
+        "vipLevel": { "type": "string", "enum": ["none", "water", "black_diamond", "red_diamond", "super_diamond", "rock_diamond", "star_diamond", "silver_diamond", "golden_diamond", "moon_diamond", "professional_general_diamond"], "description": "Publicly visible Level 1 Water Diamond to Level 10 Professional General Diamond badge" },
+        "vipLevelRank": { "type": "integer", "description": "Numeric rank 0 (free) through 10 (Professional General Diamond)" },
+        "lastLevelUpgradeId": { "type": "string", "description": "Latest activated level_upgrades receipt ID" },
+        "hasRadioAccess": { "type": "boolean", "description": "Publicly visible BINTAFACE Global Radio Pass badge" },
+        "radioPassId": { "type": "string", "description": "Active radio_passes receipt ID" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update" }
+      },
+      "required": [
+        "userId", "displayName", "age", "city", "bio", "lookingFor",
+        "promptQuestion", "promptAnswer", "interests", "avatarKey",
+        "isDiscoverable", "createdAt", "updatedAt"
+      ]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "Unified social post, Twitter-style thread, TikTok-style reel, and YouTube-style video.",
+      "type": "object",
+      "properties": {
+        "authorId": { "type": "string", "description": "Author UID" },
+        "authorName": { "type": "string", "description": "Author display name" },
+        "authorAvatarKey": { "type": "string", "description": "Author avatar key" },
+        "authorPhotoBase64": { "type": "string", "description": "Optional author thumbnail" },
+        "authorIsPlus": { "type": "boolean", "description": "Whether author holds Bintaface+ badge" },
+        "mediaType": { "type": "string", "enum": ["post", "thread", "reel", "video"], "description": "Content format across Feed & Watch" },
+        "title": { "type": "string", "description": "Video title for Watch tab" },
+        "durationLabel": { "type": "string", "description": "Clip or video duration label" },
+        "audioTrack": { "type": "string", "description": "Audio track label for Reels" },
+        "repostedFromAuthor": { "type": "string", "description": "Original creator when reposted" },
+        "content": { "type": "string", "description": "Post, thread, or video description text" },
+        "tag": { "type": "string", "enum": ["Moment", "Date Idea", "Question", "Hangout", "Thread", "Reel", "Video"], "description": "Category tag" },
+        "imageKey": { "type": "string", "description": "Optional preset backdrop key" },
+        "postPhotoBase64": { "type": "string", "description": "Optional compressed photo or video cover thumbnail" },
+        "visibility": { "type": "string", "enum": ["community"], "description": "Feed visibility" },
+        "likesCount": { "type": "integer", "description": "Total likes count" },
+        "commentsCount": { "type": "integer", "description": "Total comments count" },
+        "repostsCount": { "type": "integer", "description": "Total reposts count" },
+        "viewsCount": { "type": "integer", "description": "Total video/reel views count" },
+        "sparksCount": { "type": "integer", "description": "Total Spark Gifts received" },
+        "sparksEarningsCents": { "type": "integer", "description": "Creator earnings in cents accrued on this item" },
+        "lastCommentId": { "type": "string", "description": "ID of latest comment" },
+        "lastSparkGiftId": { "type": "string", "description": "ID of latest Spark Gift" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp on creation" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp on update" }
+      },
+      "required": [
+        "authorId", "authorName", "authorAvatarKey", "content", "tag",
+        "visibility", "likesCount", "commentsCount", "createdAt", "updatedAt"
+      ]
+    },
+    "PostLike": {
+      "title": "PostLike",
+      "description": "Tracks a user's like on a post/reel/video.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "postId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "postId", "createdAt"]
+    },
+    "PostRepost": {
+      "title": "PostRepost",
+      "description": "Tracks a user's repost on a feed post or thread.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "postId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "postId", "createdAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "Comment on a community post, thread, reel, or video.",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string" },
+        "postVisibility": { "type": "string", "enum": ["community"] },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorAvatarKey": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "postVisibility", "authorId", "authorName", "authorAvatarKey", "text", "createdAt"]
+    },
+    "Follow": {
+      "title": "Follow",
+      "description": "Creator follow/subscription link keyed as {followerId}_{followedId}.",
+      "type": "object",
+      "properties": {
+        "followerId": { "type": "string" },
+        "followedId": { "type": "string" },
+        "followerName": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["followerId", "followedId", "followerName", "createdAt"]
+    },
+    "LiveRoom": {
+      "title": "LiveRoom",
+      "description": "BIGO Live-style interactive live streaming room with viewers, hearts, chat, and Spark Gifting.",
+      "type": "object",
+      "properties": {
+        "hostId": { "type": "string" },
+        "hostName": { "type": "string" },
+        "hostAvatarKey": { "type": "string" },
+        "hostPhotoBase64": { "type": "string" },
+        "hostIsPlus": { "type": "boolean" },
+        "title": { "type": "string" },
+        "category": { "type": "string", "enum": ["Music", "Talk", "Gaming", "Q&A", "Talent"] },
+        "coverKey": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "status": { "type": "string", "enum": ["live", "ended"] },
+        "viewerCount": { "type": "integer" },
+        "likesCount": { "type": "integer" },
+        "sparksCount": { "type": "integer" },
+        "totalGiftsCents": { "type": "integer" },
+        "lastSparkGiftId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "hostId", "hostName", "hostAvatarKey", "title", "category",
+        "visibility", "status", "viewerCount", "likesCount", "totalGiftsCents",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "LiveMessage": {
+      "title": "LiveMessage",
+      "description": "Real-time live stream chat message or gift shoutout.",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string" },
+        "roomVisibility": { "type": "string", "enum": ["public"] },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderAvatarKey": { "type": "string" },
+        "text": { "type": "string" },
+        "isGiftNotice": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["roomId", "roomVisibility", "senderId", "senderName", "senderAvatarKey", "text", "createdAt"]
+    },
+    "SocialChannel": {
+      "title": "SocialChannel",
+      "description": "Telegram-style broadcast channel created by users.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "ownerAvatarKey": { "type": "string" },
+        "title": { "type": "string" },
+        "handle": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "subscriberCount": { "type": "integer" },
+        "totalGiftsCents": { "type": "integer" },
+        "lastSparkGiftId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "ownerName", "ownerAvatarKey", "title", "handle",
+        "description", "visibility", "subscriberCount", "totalGiftsCents",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "ChannelSubscription": {
+      "title": "ChannelSubscription",
+      "description": "Tracks user subscription to a broadcast channel keyed as {channelId}_{userId}.",
+      "type": "object",
+      "properties": {
+        "channelId": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["channelId", "userId", "createdAt"]
+    },
+    "ChannelBroadcast": {
+      "title": "ChannelBroadcast",
+      "description": "Broadcast message posted inside a Telegram-style channel.",
+      "type": "object",
+      "properties": {
+        "channelId": { "type": "string" },
+        "channelVisibility": { "type": "string", "enum": ["public"] },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "text": { "type": "string" },
+        "imageKey": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["channelId", "channelVisibility", "ownerId", "ownerName", "text", "createdAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "WhatsApp/Telegram-style direct 1-on-1 or group chat thread.",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["direct", "group"] },
+        "title": { "type": "string" },
+        "participantIds": { "type": "array" },
+        "participantNames": { "type": "object" },
+        "createdBy": { "type": "string" },
+        "lastMessage": { "type": "string" },
+        "lastMessageAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "type", "title", "participantIds", "participantNames",
+        "createdBy", "lastMessage", "lastMessageAt", "createdAt", "updatedAt"
+      ]
+    },
+    "DirectMessage": {
+      "title": "DirectMessage",
+      "description": "Text message, voice note, or call log inside a direct or group conversation.",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "text": { "type": "string" },
+        "participantIds": { "type": "array" },
+        "messageType": { "type": "string", "enum": ["text", "voice_note", "call_log"] },
+        "voiceNoteBase64": { "type": "string" },
+        "voiceNoteDurationSec": { "type": "integer" },
+        "callType": { "type": "string", "enum": ["voice", "video"] },
+        "callDurationSec": { "type": "integer" },
+        "callStatus": { "type": "string", "enum": ["completed", "missed", "declined"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "senderName", "text", "participantIds", "createdAt"]
+    },
+    "Swipe": {
+      "title": "Swipe",
+      "description": "People discovery swipe decision between two users.",
+      "type": "object",
+      "properties": {
+        "fromUserId": { "type": "string" },
+        "toUserId": { "type": "string" },
+        "decision": { "type": "string", "enum": ["like", "superlike", "pass"] },
+        "positiveTargetId": { "type": "string" },
+        "fromName": { "type": "string" },
+        "fromAvatarKey": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["fromUserId", "toUserId", "decision", "positiveTargetId", "fromName", "fromAvatarKey", "createdAt"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "Mutual match between two users enabling real-time chat.",
+      "type": "object",
+      "properties": {
+        "participantIds": { "type": "array" },
+        "user1Id": { "type": "string" },
+        "user1Name": { "type": "string" },
+        "user1AvatarKey": { "type": "string" },
+        "user2Id": { "type": "string" },
+        "user2Name": { "type": "string" },
+        "user2AvatarKey": { "type": "string" },
+        "lastMessage": { "type": "string" },
+        "lastMessageAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "participantIds", "user1Id", "user1Name", "user1AvatarKey",
+        "user2Id", "user2Name", "user2AvatarKey", "lastMessage",
+        "lastMessageAt", "createdAt", "updatedAt"
+      ]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Append-only text, voice note, or call log inside a match conversation.",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "text": { "type": "string" },
+        "participantIds": { "type": "array" },
+        "messageType": { "type": "string", "enum": ["text", "voice_note", "call_log"] },
+        "voiceNoteBase64": { "type": "string" },
+        "voiceNoteDurationSec": { "type": "integer" },
+        "callType": { "type": "string", "enum": ["voice", "video"] },
+        "callDurationSec": { "type": "integer" },
+        "callStatus": { "type": "string", "enum": ["completed", "missed", "declined"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "senderName", "text", "participantIds", "createdAt"]
+    },
+    "PlatformSettings": {
+      "title": "PlatformSettings",
+      "description": "Singleton platform admin ownership and non-PII revenue summary restricted to gregoryfrancis652@gmail.com.",
+      "type": "object",
+      "properties": {
+        "adminUid": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "platformFeePercent": { "type": "integer" },
+        "payoutAccountLabel": { "type": "string" },
+        "payoutMethod": { "type": "string", "enum": ["usd_bank", "ngn_bank", "bank_transfer", "paypal", "upi", "mobile_money"] },
+        "bankName": { "type": "string" },
+        "adminAccountNumber": { "type": "string", "description": "App Admin receiving account number (default FairMoney 9038006221)" },
+        "adminAccountHolder": { "type": "string", "description": "App Admin receiving account holder name (default Francis Gregory)" },
+        "maskedAccountNumber": { "type": "string" },
+        "adminPayoutCurrency": { "type": "string", "enum": ["USD", "NGN"] },
+        "usdToNgnRate": { "type": "integer", "description": "Exchange rate (NGN per $1.00 USD)" },
+        "adAdminSharePercent": { "type": "integer", "description": "Fixed 70% AdMob share for App Admin (30% creators)" },
+        "autoPayoutEnabled": { "type": "boolean", "description": "YouTube-style automatic creator payout queueing" },
+        "appDownloadUrl": { "type": "string", "description": "Shareable BINTAFACE live user access link" },
+        "admobBannerUnitId": { "type": "string", "description": "Google AdMob Banner Ad Unit ID" },
+        "admobRewardedUnitId": { "type": "string", "description": "Google AdMob Rewarded Ad Unit ID" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminUid", "adminEmail", "platformFeePercent", "createdAt", "updatedAt"]
+    },
+    "AdminPayoutAccount": {
+      "title": "AdminPayoutAccount",
+      "description": "Private admin-only receiving USD or Naira bank or payment account number for BINTAFACE revenue.",
+      "type": "object",
+      "properties": {
+        "adminUid": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "payoutMethod": { "type": "string", "enum": ["usd_bank", "ngn_bank", "bank_transfer", "paypal", "upi", "mobile_money"] },
+        "payoutCurrency": { "type": "string", "enum": ["USD", "NGN"] },
+        "accountHolderName": { "type": "string" },
+        "bankName": { "type": "string" },
+        "accountNumber": { "type": "string" },
+        "routingOrSwift": { "type": "string" },
+        "payoutEmailOrPhone": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminUid", "adminEmail", "payoutMethod", "accountHolderName", "bankName", "accountNumber", "createdAt", "updatedAt"]
+    },
+    "AdminWithdrawal": {
+      "title": "AdminWithdrawal",
+      "description": "Immutable receipt of app admin revenue withdrawn in USD or NGN to the configured admin account number.",
+      "type": "object",
+      "properties": {
+        "adminUid": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "amountCents": { "type": "integer" },
+        "ngnAmountWhole": { "type": "integer" },
+        "payoutCurrency": { "type": "string", "enum": ["USD", "NGN"] },
+        "payoutMethod": { "type": "string", "enum": ["usd_bank", "ngn_bank", "bank_transfer", "paypal", "upi", "mobile_money"] },
+        "accountHolderName": { "type": "string" },
+        "bankName": { "type": "string" },
+        "maskedAccountNumber": { "type": "string" },
+        "status": { "type": "string", "enum": ["completed", "pending"] },
+        "referenceCode": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["adminUid", "adminEmail", "amountCents", "payoutMethod", "accountHolderName", "bankName", "maskedAccountNumber", "status", "referenceCode", "createdAt"]
+    },
+    "AdRevenueEvent": {
+      "title": "AdRevenueEvent",
+      "description": "Google AdMob paid impression/reward event split 70% to App Admin and 30% to Content Creator.",
+      "type": "object",
+      "properties": {
+        "viewerId": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "creatorName": { "type": "string" },
+        "postId": { "type": "string" },
+        "adFormat": { "type": "string", "enum": ["banner", "rewarded"] },
+        "adUnitId": { "type": "string" },
+        "valueMicros": { "type": "integer" },
+        "currencyCode": { "type": "string" },
+        "grossCents": { "type": "integer" },
+        "adminShareCents": { "type": "integer" },
+        "creatorShareCents": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "viewerId", "creatorId", "creatorName", "postId", "adFormat", "adUnitId",
+        "valueMicros", "currencyCode", "grossCents", "adminShareCents", "creatorShareCents", "createdAt"
+      ]
+    },
+    "SparkGift": {
+      "title": "SparkGift",
+      "description": "Immutable creator tip receipt split 80% to creator (post/reel/video/live/channel) and 20% to app admin.",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "recipientId": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "postId": { "type": "string", "description": "Target post, reel, video, live room, channel, page, or radio station ID" },
+        "targetType": { "type": "string", "enum": ["post", "live", "channel", "page", "radio"] },
+        "sparksCount": { "type": "integer" },
+        "grossCents": { "type": "integer" },
+        "creatorShareCents": { "type": "integer" },
+        "adminFeeCents": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "senderId", "senderName", "recipientId", "recipientName", "postId",
+        "sparksCount", "grossCents", "creatorShareCents", "adminFeeCents", "createdAt"
+      ]
+    },
+    "RevenueLedgerEntry": {
+      "title": "RevenueLedgerEntry",
+      "description": "Append-only platform revenue ledger recording app admin and creator splits.",
+      "type": "object",
+      "properties": {
+        "source": { "type": "string", "enum": ["subscription", "superlikes", "boost", "sparks_pack", "spark_gift", "ad_revenue", "level_upgrade", "shop_order", "radio_access"] },
+        "productId": { "type": "string" },
+        "payerId": { "type": "string" },
+        "recipientId": { "type": "string" },
+        "grossCents": { "type": "integer" },
+        "adminShareCents": { "type": "integer" },
+        "creatorShareCents": { "type": "integer" },
+        "referenceToken": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "source", "productId", "payerId", "recipientId",
+        "grossCents", "adminShareCents", "creatorShareCents", "createdAt"
+      ]
+    },
+    "LevelUpgrade": {
+      "title": "LevelUpgrade",
+      "description": "Immutable receipt for sequential step-by-step user level upgrade (Level 1 Water Diamond through Level 10 Professional General Diamond, 5,000 Naira per step or USD, no skipping) paid directly to App Admin with automatic activation.",
+      "type": "object",
+      "properties": {
+        "payerId": { "type": "string" },
+        "payerName": { "type": "string" },
+        "levelId": { "type": "string", "enum": ["water", "black_diamond", "red_diamond", "super_diamond", "rock_diamond", "star_diamond", "silver_diamond", "golden_diamond", "moon_diamond", "professional_general_diamond"] },
+        "levelName": { "type": "string" },
+        "levelRank": { "type": "integer" },
+        "currency": { "type": "string", "enum": ["NGN", "USD"] },
+        "ngnAmount": { "type": "integer" },
+        "amountCents": { "type": "integer" },
+        "adminShareCents": { "type": "integer" },
+        "creatorShareCents": { "type": "integer" },
+        "paymentMethod": { "type": "string", "enum": ["ngn_bank", "usd_bank", "card_ngn", "card_usd", "google_play"] },
+        "paymentReference": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "adminBankLabel": { "type": "string" },
+        "status": { "type": "string", "enum": ["activated"] },
+        "activatedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "payerId", "payerName", "levelId", "levelName", "levelRank", "currency",
+        "ngnAmount", "amountCents", "adminShareCents", "creatorShareCents",
+        "paymentMethod", "paymentReference", "adminEmail", "status", "activatedAt", "createdAt"
+      ]
+    },
+    "PayoutRequest": {
+      "title": "PayoutRequest",
+      "description": "Creator payout withdrawal request (USD, Naira bank, or Crypto wallet) settled automatically or by the app admin.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "amountCents": { "type": "integer" },
+        "ngnAmountWhole": { "type": "integer" },
+        "payoutMethod": { "type": "string", "enum": ["usd_bank", "ngn_bank", "crypto", "paypal", "bank", "upi"] },
+        "payoutCurrency": { "type": "string", "enum": ["USD", "NGN", "CRYPTO"] },
+        "payoutBankOrNetwork": { "type": "string" },
+        "payoutAccount": { "type": "string" },
+        "isAutoPayout": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pending", "paid", "rejected"] },
+        "adminNote": { "type": "string" },
+        "payoutReference": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId", "userName", "amountCents", "payoutMethod",
+        "payoutAccount", "status", "createdAt", "updatedAt"
+      ]
+    },
+    "SocialPage": {
+      "title": "SocialPage",
+      "description": "Facebook-style public page created by a user for a brand, business, creator, or community.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "ownerAvatarKey": { "type": "string" },
+        "name": { "type": "string" },
+        "handle": { "type": "string" },
+        "category": { "type": "string", "enum": ["Creator", "Business", "Community", "Entertainment", "Education", "Shopping", "News", "Artist"] },
+        "description": { "type": "string" },
+        "websiteUrl": { "type": "string" },
+        "coverKey": { "type": "string" },
+        "photoBase64": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "followersCount": { "type": "integer" },
+        "postsCount": { "type": "integer" },
+        "totalGiftsCents": { "type": "integer" },
+        "lastPostId": { "type": "string" },
+        "lastSparkGiftId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "ownerName", "ownerAvatarKey", "name", "handle", "category",
+        "description", "visibility", "followersCount", "postsCount", "totalGiftsCents",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "PageFollow": {
+      "title": "PageFollow",
+      "description": "Tracks a user following/liking a Facebook-style page keyed as {pageId}_{userId}.",
+      "type": "object",
+      "properties": {
+        "pageId": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["pageId", "userId", "createdAt"]
+    },
+    "PagePost": {
+      "title": "PagePost",
+      "description": "Post published inside a user-created Facebook-style Page.",
+      "type": "object",
+      "properties": {
+        "pageId": { "type": "string" },
+        "pageName": { "type": "string" },
+        "pageVisibility": { "type": "string", "enum": ["public"] },
+        "ownerId": { "type": "string" },
+        "text": { "type": "string" },
+        "imageKey": { "type": "string" },
+        "postPhotoBase64": { "type": "string" },
+        "likesCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["pageId", "pageName", "pageVisibility", "ownerId", "text", "likesCount", "createdAt"]
+    },
+    "PagePostLike": {
+      "title": "PagePostLike",
+      "description": "Tracks user likes on a Page post keyed as {postId}_{userId}.",
+      "type": "object",
+      "properties": {
+        "pageId": { "type": "string" },
+        "postId": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["pageId", "postId", "userId", "createdAt"]
+    },
+    "CallSession": {
+      "title": "CallSession",
+      "description": "Real-time voice or video call signaling session between chat or match participants.",
+      "type": "object",
+      "properties": {
+        "callerId": { "type": "string" },
+        "callerName": { "type": "string" },
+        "callerAvatarKey": { "type": "string" },
+        "calleeIds": { "type": "array" },
+        "participantIds": { "type": "array" },
+        "participantNames": { "type": "object" },
+        "threadId": { "type": "string" },
+        "threadType": { "type": "string", "enum": ["conversation", "match"] },
+        "callType": { "type": "string", "enum": ["voice", "video"] },
+        "status": { "type": "string", "enum": ["ringing", "active", "ended", "declined"] },
+        "durationSec": { "type": "integer" },
+        "callerMuted": { "type": "boolean" },
+        "callerVideoOn": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "endedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "callerId", "callerName", "callerAvatarKey", "calleeIds", "participantIds",
+        "participantNames", "threadId", "threadType", "callType", "status",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "Shop": {
+      "title": "Shop",
+      "description": "Public storefront opened by a BINTAFACE creator or merchant.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "ownerAvatarKey": { "type": "string" },
+        "name": { "type": "string" },
+        "handle": { "type": "string" },
+        "category": { "type": "string", "enum": ["Fashion", "Electronics", "Beauty", "Digital", "Food", "Services", "General"] },
+        "description": { "type": "string" },
+        "currency": { "type": "string", "enum": ["NGN", "USD"] },
+        "city": { "type": "string" },
+        "coverKey": { "type": "string" },
+        "photoBase64": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "productsCount": { "type": "integer" },
+        "ordersCount": { "type": "integer" },
+        "totalSalesCents": { "type": "integer" },
+        "lastProductId": { "type": "string" },
+        "lastOrderId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "ownerName", "ownerAvatarKey", "name", "handle", "category",
+        "description", "currency", "visibility", "productsCount", "ordersCount",
+        "totalSalesCents", "createdAt", "updatedAt"
+      ]
+    },
+    "ShopProduct": {
+      "title": "ShopProduct",
+      "description": "Product item listed in a creator storefront.",
+      "type": "object",
+      "properties": {
+        "shopId": { "type": "string" },
+        "shopName": { "type": "string" },
+        "shopVisibility": { "type": "string", "enum": ["public"] },
+        "ownerId": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "category": { "type": "string" },
+        "priceUsdCents": { "type": "integer" },
+        "priceNgn": { "type": "integer" },
+        "stockCount": { "type": "integer" },
+        "isAvailable": { "type": "boolean" },
+        "imageKey": { "type": "string" },
+        "photoBase64": { "type": "string" },
+        "lastOrderId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "shopId", "shopName", "shopVisibility", "ownerId", "title", "description",
+        "category", "priceUsdCents", "priceNgn", "stockCount", "isAvailable",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "ShopOrder": {
+      "title": "ShopOrder",
+      "description": "Customer purchase order in a BINTAFACE Shop split 80% seller / 20% platform.",
+      "type": "object",
+      "properties": {
+        "shopId": { "type": "string" },
+        "shopName": { "type": "string" },
+        "productId": { "type": "string" },
+        "productTitle": { "type": "string" },
+        "buyerId": { "type": "string" },
+        "buyerName": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "sellerName": { "type": "string" },
+        "quantity": { "type": "integer" },
+        "currency": { "type": "string", "enum": ["NGN", "USD"] },
+        "unitPriceCents": { "type": "integer" },
+        "totalCents": { "type": "integer" },
+        "ngnAmount": { "type": "integer" },
+        "sellerShareCents": { "type": "integer" },
+        "adminFeeCents": { "type": "integer" },
+        "deliveryNote": { "type": "string" },
+        "status": { "type": "string", "enum": ["placed", "fulfilled", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "shopId", "shopName", "productId", "productTitle", "buyerId", "buyerName",
+        "sellerId", "sellerName", "quantity", "currency", "unitPriceCents",
+        "totalCents", "ngnAmount", "sellerShareCents", "adminFeeCents",
+        "status", "createdAt", "updatedAt"
+      ]
+    },
+    "RadioPass": {
+      "title": "RadioPass",
+      "description": "Immutable receipt for paying App Admin NGN 2,000 (Francis Gregory, FairMoney 9038006221) with Google confirmation to unlock Global Radio listening and channel creation.",
+      "type": "object",
+      "properties": {
+        "payerId": { "type": "string" },
+        "payerName": { "type": "string" },
+        "currency": { "type": "string", "enum": ["NGN", "USD"] },
+        "ngnAmount": { "type": "integer" },
+        "amountCents": { "type": "integer" },
+        "adminShareCents": { "type": "integer" },
+        "creatorShareCents": { "type": "integer" },
+        "paymentMethod": { "type": "string", "enum": ["ngn_bank", "usd_bank", "card_ngn", "card_usd", "google_play"] },
+        "paymentReference": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "adminBankLabel": { "type": "string" },
+        "status": { "type": "string", "enum": ["active"] },
+        "activatedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "payerId", "payerName", "currency", "ngnAmount", "amountCents",
+        "adminShareCents", "creatorShareCents", "paymentMethod", "paymentReference",
+        "adminEmail", "status", "activatedAt", "createdAt"
+      ]
+    },
+    "RadioChannel": {
+      "title": "RadioChannel",
+      "description": "Global BINTAFACE radio broadcast station created by a verified Radio Pass holder to reach billions of listeners.",
+      "type": "object",
+      "properties": {
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "ownerAvatarKey": { "type": "string" },
+        "title": { "type": "string" },
+        "frequency": { "type": "string" },
+        "handle": { "type": "string" },
+        "category": { "type": "string", "enum": ["Talk", "Music", "News", "Knowledge", "Faith", "Comedy", "Business", "Global"] },
+        "description": { "type": "string" },
+        "coverKey": { "type": "string" },
+        "visibility": { "type": "string", "enum": ["public"] },
+        "status": { "type": "string", "enum": ["live", "off_air"] },
+        "listenersCount": { "type": "integer" },
+        "subscribersCount": { "type": "integer" },
+        "totalGiftsCents": { "type": "integer" },
+        "lastSparkGiftId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "ownerId", "ownerName", "ownerAvatarKey", "title", "frequency", "handle",
+        "category", "description", "visibility", "status", "listenersCount",
+        "subscribersCount", "totalGiftsCents", "createdAt", "updatedAt"
+      ]
+    },
+    "RadioBroadcast": {
+      "title": "RadioBroadcast",
+      "description": "Live radio episode, voice broadcast audio segment, or studio announcement posted in a RadioChannel.",
+      "type": "object",
+      "properties": {
+        "channelId": { "type": "string" },
+        "channelVisibility": { "type": "string", "enum": ["public"] },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "title": { "type": "string" },
+        "text": { "type": "string" },
+        "audioBase64": { "type": "string" },
+        "audioDurationSec": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["channelId", "channelVisibility", "ownerId", "ownerName", "title", "text", "createdAt"]
+    },
+    "RadioSubscription": {
+      "title": "RadioSubscription",
+      "description": "Listener subscription to a global radio channel keyed as {channelId}_{userId}.",
+      "type": "object",
+      "properties": {
+        "channelId": { "type": "string" },
+        "userId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["channelId", "userId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserPrivate" },
+      "description": "Owner-only private user account settings, entitlements, and PII."
+    },
+    "/public_profiles/{userId}": {
+      "schema": { "$ref": "#/entities/PublicProfile" },
+      "description": "Public social profiles without PII."
+    },
+    "/posts/{postId}": {
+      "schema": { "$ref": "#/entities/Post" },
+      "description": "Unified feed posts, threads, short reels, and widescreen videos."
+    },
+    "/posts/{postId}/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/Comment" },
+      "description": "Comments on posts, threads, reels, and videos."
+    },
+    "/post_likes/{likeId}": {
+      "schema": { "$ref": "#/entities/PostLike" },
+      "description": "User likes keyed as {postId}_{userId}."
+    },
+    "/post_reposts/{repostId}": {
+      "schema": { "$ref": "#/entities/PostRepost" },
+      "description": "User reposts keyed as {postId}_{userId}."
+    },
+    "/follows/{followId}": {
+      "schema": { "$ref": "#/entities/Follow" },
+      "description": "User follow relationships keyed as {followerId}_{followedId}."
+    },
+    "/live_rooms/{roomId}": {
+      "schema": { "$ref": "#/entities/LiveRoom" },
+      "description": "BIGO Live-style interactive live broadcast rooms."
+    },
+    "/live_rooms/{roomId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/LiveMessage" },
+      "description": "Real-time messages inside a live broadcast room."
+    },
+    "/channels/{channelId}": {
+      "schema": { "$ref": "#/entities/SocialChannel" },
+      "description": "Telegram-style creator broadcast channels."
+    },
+    "/channels/{channelId}/broadcasts/{broadcastId}": {
+      "schema": { "$ref": "#/entities/ChannelBroadcast" },
+      "description": "Broadcast messages published by channel owners."
+    },
+    "/channel_subscriptions/{subId}": {
+      "schema": { "$ref": "#/entities/ChannelSubscription" },
+      "description": "Channel subscriptions keyed as {channelId}_{userId}."
+    },
+    "/conversations/{convId}": {
+      "schema": { "$ref": "#/entities/Conversation" },
+      "description": "WhatsApp/Telegram direct 1-on-1 and group chats."
+    },
+    "/conversations/{convId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/DirectMessage" },
+      "description": "Messages inside a direct or group chat."
+    },
+    "/swipes/{swipeId}": {
+      "schema": { "$ref": "#/entities/Swipe" },
+      "description": "Discovery swipe decisions keyed as {fromUserId}_{toUserId}."
+    },
+    "/matches/{matchId}": {
+      "schema": { "$ref": "#/entities/Match" },
+      "description": "Mutual matches between two users."
+    },
+    "/matches/{matchId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Messages inside a match thread."
+    },
+    "/app_settings/{settingId}": {
+      "schema": { "$ref": "#/entities/PlatformSettings" },
+      "description": "Singleton platform admin and non-PII revenue summary."
+    },
+    "/admin_payout_accounts/{accountId}": {
+      "schema": { "$ref": "#/entities/AdminPayoutAccount" },
+      "description": "Admin-only private receiving bank and account number details."
+    },
+    "/admin_payouts/{withdrawalId}": {
+      "schema": { "$ref": "#/entities/AdminWithdrawal" },
+      "description": "Admin-only withdrawal receipts of accumulated platform revenue."
+    },
+    "/spark_gifts/{giftId}": {
+      "schema": { "$ref": "#/entities/SparkGift" },
+      "description": "Immutable creator tip receipts split 80% creator / 20% app admin."
+    },
+    "/revenue_ledger/{entryId}": {
+      "schema": { "$ref": "#/entities/RevenueLedgerEntry" },
+      "description": "Platform revenue ledger readable by admin and transaction participants."
+    },
+    "/payout_requests/{requestId}": {
+      "schema": { "$ref": "#/entities/PayoutRequest" },
+      "description": "Creator payout withdrawal requests settled automatically or by the app admin."
+    },
+    "/ad_revenue_events/{eventId}": {
+      "schema": { "$ref": "#/entities/AdRevenueEvent" },
+      "description": "Google AdMob paid revenue events split 70% Admin / 30% Creator."
+    },
+    "/pages/{pageId}": {
+      "schema": { "$ref": "#/entities/SocialPage" },
+      "description": "Facebook-style public Pages created and managed by users."
+    },
+    "/pages/{pageId}/posts/{postId}": {
+      "schema": { "$ref": "#/entities/PagePost" },
+      "description": "Posts published on a user-created Page."
+    },
+    "/page_follows/{followId}": {
+      "schema": { "$ref": "#/entities/PageFollow" },
+      "description": "Page follow records keyed as {pageId}_{userId}."
+    },
+    "/page_post_likes/{likeId}": {
+      "schema": { "$ref": "#/entities/PagePostLike" },
+      "description": "Page post like records keyed as {postId}_{userId}."
+    },
+    "/level_upgrades/{upgradeId}": {
+      "schema": { "$ref": "#/entities/LevelUpgrade" },
+      "description": "Immutable receipts of Water-to-Diamond level upgrades paid directly to App Admin with automatic activation."
+    },
+    "/call_sessions/{callId}": {
+      "schema": { "$ref": "#/entities/CallSession" },
+      "description": "Real-time voice and video call signaling sessions between chat or match participants."
+    },
+    "/shops/{shopId}": {
+      "schema": { "$ref": "#/entities/Shop" },
+      "description": "Public storefronts managed by BINTAFACE creators and sellers."
+    },
+    "/shops/{shopId}/products/{productId}": {
+      "schema": { "$ref": "#/entities/ShopProduct" },
+      "description": "Products listed inside a Shop storefront."
+    },
+    "/shop_orders/{orderId}": {
+      "schema": { "$ref": "#/entities/ShopOrder" },
+      "description": "Shop customer orders split 80% Seller / 20% App Admin."
+    },
+    "/radio_passes/{passId}": {
+      "schema": { "$ref": "#/entities/RadioPass" },
+      "description": "Immutable NGN 2,000 Radio Access Pass receipts paid to App Admin with automatic activation."
+    },
+    "/radio_channels/{channelId}": {
+      "schema": { "$ref": "#/entities/RadioChannel" },
+      "description": "Global public radio stations created by verified Radio Pass holders."
+    },
+    "/radio_channels/{channelId}/broadcasts/{broadcastId}": {
+      "schema": { "$ref": "#/entities/RadioBroadcast" },
+      "description": "Live radio shows, audio broadcasts, and studio segments inside a RadioChannel."
+    },
+    "/radio_subscriptions/{subId}": {
+      "schema": { "$ref": "#/entities/RadioSubscription" },
+      "description": "Listener subscriptions to radio stations keyed as {channelId}_{userId}."
+    }
+  }
+}
